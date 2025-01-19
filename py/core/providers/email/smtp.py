@@ -49,17 +49,28 @@ class AsyncSMTPEmailProvider(EmailProvider):
         loop = asyncio.get_running_loop()
 
         def _send():
-            with smtplib.SMTP_SSL(
-                self.smtp_server,
-                self.smtp_port,
-                context=self.ssl_context,
-                timeout=30,
-            ) as server:
+            # Establish a plain SMTP connection
+            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=30) as server:
                 logger.info("Connected to SMTP server")
+                
+                # Identify with the SMTP server
+                server.ehlo()
+                
+                # Upgrade the connection to secure using STARTTLS
+                server.starttls(context=self.ssl_context)
+                logger.info("Started TLS")
+                
+                # Re-identify after starting TLS (optional but recommended)
+                server.ehlo()
+                
+                # Login after the connection is secure
                 server.login(self.smtp_username, self.smtp_password)
                 logger.info("Login successful")
+                
+                # Send the email message
                 server.send_message(msg)
                 logger.info("Message sent successfully!")
+
 
         try:
             await loop.run_in_executor(None, _send)

@@ -30,10 +30,45 @@ export class CollectionsClient {
   async create(options: {
     name: string;
     description?: string;
+    parentId?: string;
   }): Promise<WrappedCollectionResponse> {
-    return this.client.makeRequest("POST", "collections", {
+    const response = await this.client.makeRequest("POST", "collections", {
       data: options,
     });
+  
+    // If no parent, create default subcollections
+    if (!options.parentId) {
+      const collectionId = response.data.id;
+      
+      // Create main subcollection
+      const mainSub = await this.client.makeRequest("POST", "collections", {
+        data: {
+          name: "Main",
+          description: "Main subcollection",
+          parentId: collectionId,
+        },
+      });
+  
+      // Create default subcollections
+      const defaultSubs = [
+        { name: "Textbooks", description: "General documents collection" },
+        { name: "Assignments", description: "Assignment instrucctions and solutions" },
+        { name: "Notes", description: "Class notes eg. written notes" },
+      ];
+  
+      for (const sub of defaultSubs) {
+        await this.client.makeRequest("POST", "collections", {
+          data: {
+            ...sub,
+            parentId: mainSub.data.id,
+          },
+        });
+      }
+       // Fetch the collection again with its subcollections
+    return this.client.makeRequest("GET", `collections/${collectionId}`);
+    }
+  
+    return response;
   }
 
   /**

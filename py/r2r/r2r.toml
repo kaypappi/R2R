@@ -71,7 +71,7 @@ concurrent_request_limit = 64
 fast_llm = "openai/gpt-4o-mini"
 
   [completion.generation_config]
-  model = "openai/gpt-4o"
+  model = "ollama/llama3.1"
   temperature = 0.1
   top_p = 1
   max_tokens_to_sample = 1_024
@@ -85,6 +85,22 @@ provider = "bcrypt"
 provider = "postgres"
 default_collection_name = "Default"
 default_collection_description = "Your default collection."
+default_main_subcollection_name="Class 1"
+default_main_subcollection_description="Your very first class"
+
+# Use an array of tables for default_subcollections
+[[database.default_subcollections]]
+name = "Textbooks"
+description = "This folder can be used to keep track of your course materials"
+
+[[database.default_subcollections]]
+name = "Assignments"
+description = "You can store your assignments and assignments instructions here"
+
+[[database.default_subcollections]]
+name = "Notes"
+description = "Handy for keeping track of your class notes"
+   
 # collection_summary_system_prompt = 'default_system'
 # collection_summary_task_prompt = 'default_collection_summary'
 
@@ -179,4 +195,9 @@ provider = "simple"
 provider = "r2r"
 
 [email]
-provider = "console_mock"
+provider = "smtp"  # or other supported email providers
+smtp_server = "smtp.mailersend.net"
+smtp_port = 587
+smtp_username = "MS_qBdwWB@trial-vywj2lpro0j47oqz.mlsender.net"
+smtp_password = "zPQ58kKOfNSg9WM2"
+from_email = "noreply@trial-vywj2lpro0j47oqz.mlsender.net"

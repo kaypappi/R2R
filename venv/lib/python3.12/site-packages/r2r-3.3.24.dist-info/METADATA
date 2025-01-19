@@ -1,0 +1,188 @@
+Metadata-Version: 2.3
+Name: r2r
+Version: 3.3.24
+Summary: SciPhi R2R
+License: MIT
+Author: Owen Colegrove
+Author-email: owen@sciphi.ai
+Requires-Python: >=3.10,<3.13
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Provides-Extra: core
+Provides-Extra: ingestion-bundle
+Requires-Dist: aiofiles (>=24.1.0,<25.0.0)
+Requires-Dist: aiohttp (>=3.10.10,<4.0.0) ; extra == "core"
+Requires-Dist: aioshutil (>=1.5,<2.0) ; extra == "ingestion-bundle"
+Requires-Dist: aiosqlite (>=0.20.0,<0.21.0) ; extra == "core"
+Requires-Dist: alembic (>=1.13.3,<2.0.0)
+Requires-Dist: apscheduler (>=3.10.4,<4.0.0) ; extra == "core"
+Requires-Dist: asyncclick (>=8.1.7.2,<9.0.0.0)
+Requires-Dist: asyncpg (>=0.29.0,<0.30.0) ; extra == "core"
+Requires-Dist: bcrypt (>=4.1.3,<5.0.0) ; extra == "core"
+Requires-Dist: beautifulsoup4 (>=4.12.3,<5.0.0) ; extra == "ingestion-bundle"
+Requires-Dist: boto3 (>=1.35.17,<2.0.0) ; extra == "core"
+Requires-Dist: bs4 (>=0.0.2,<0.0.3) ; extra == "ingestion-bundle"
+Requires-Dist: click (>=8.0.0,<9.0.0)
+Requires-Dist: colorlog (>=6.9.0,<7.0.0) ; extra == "core"
+Requires-Dist: deepdiff (>=7.0.1,<8.0.0) ; extra == "core"
+Requires-Dist: docutils (>=0.21.2,<0.22.0) ; extra == "ingestion-bundle"
+Requires-Dist: epub (>=0.5.2,<0.6.0) ; extra == "ingestion-bundle"
+Requires-Dist: extract-msg (>=0.52.0,<0.53.0) ; extra == "ingestion-bundle"
+Requires-Dist: fastapi (>=0.114.0,<0.115.0)
+Requires-Dist: fire (>=0.5.0,<0.6.0) ; extra == "core"
+Requires-Dist: fsspec (>=2024.6.0,<2025.0.0) ; extra == "core"
+Requires-Dist: future (>=1.0.0,<2.0.0) ; extra == "core"
+Requires-Dist: graspologic (>=3.4.1,<4.0.0) ; extra == "core"
+Requires-Dist: gunicorn (>=21.2.0,<22.0.0) ; extra == "core"
+Requires-Dist: hatchet-sdk (>=0.38.0,<0.39.0) ; extra == "core"
+Requires-Dist: httpx (>=0.27.0,<0.28.0)
+Requires-Dist: litellm (>=1.52.8,<2.0.0) ; extra == "core"
+Requires-Dist: markdown (>=3.6,<4.0) ; extra == "ingestion-bundle"
+Requires-Dist: networkx (>=3.3,<4.0) ; extra == "core"
+Requires-Dist: numpy (>=1.22.4,<1.29.0) ; extra == "ingestion-bundle"
+Requires-Dist: olefile (>=0.47,<0.48) ; extra == "ingestion-bundle"
+Requires-Dist: ollama (>=0.3.1,<0.4.0) ; extra == "core"
+Requires-Dist: openai (>=1.11.1,<2.0.0)
+Requires-Dist: openpyxl (>=3.1.2,<4.0.0) ; extra == "ingestion-bundle"
+Requires-Dist: orgparse (>=0.4.20231004,<0.5.0) ; extra == "ingestion-bundle"
+Requires-Dist: passlib (>=1.7.4,<2.0.0) ; extra == "core"
+Requires-Dist: pdf2image (>=1.17.0,<2.0.0) ; extra == "ingestion-bundle"
+Requires-Dist: pillow-heif (>=0.21.0,<0.22.0) ; extra == "ingestion-bundle"
+Requires-Dist: posthog (>=3.5.0,<4.0.0)
+Requires-Dist: psutil (>=6.0.0,<7.0.0) ; extra == "core"
+Requires-Dist: psycopg-binary (>=3.2.3,<4.0.0)
+Requires-Dist: pydantic[email] (>=2.8.2,<3.0.0) ; extra == "core"
+Requires-Dist: pyjwt (>=2.8.0,<3.0.0) ; extra == "core"
+Requires-Dist: pynacl (>=1.5.0,<2.0.0) ; extra == "core"
+Requires-Dist: pypdf (>=4.2.0,<5.0.0) ; extra == "ingestion-bundle"
+Requires-Dist: pypdf2 (>=3.0.1,<4.0.0) ; extra == "ingestion-bundle"
+Requires-Dist: python-docx (>=1.1.0,<2.0.0) ; extra == "ingestion-bundle"
+Requires-Dist: python-dotenv (>=1.0.1,<2.0.0)
+Requires-Dist: python-multipart (>=0.0.9,<0.0.10) ; extra == "core"
+Requires-Dist: python-pptx (>=1.0.1,<2.0.0) ; extra == "ingestion-bundle"
+Requires-Dist: pyyaml (>=6.0.1,<7.0.0) ; extra == "core"
+Requires-Dist: requests (>=2.31.0,<3.0.0)
+Requires-Dist: rich (>=13.9.4,<14.0.0)
+Requires-Dist: sendgrid (>=6.11.0,<7.0.0) ; extra == "core"
+Requires-Dist: sqlalchemy (>=2.0.30,<3.0.0) ; extra == "core"
+Requires-Dist: striprtf (>=0.0.28,<0.0.29) ; extra == "ingestion-bundle"
+Requires-Dist: supabase (>=2.7.4,<3.0.0) ; extra == "core"
+Requires-Dist: tiktoken (>=0.8.0,<0.9.0)
+Requires-Dist: tokenizers (==0.19) ; extra == "core"
+Requires-Dist: toml (>=0.10.2,<0.11.0)
+Requires-Dist: types-aiofiles (>=24.1.0.20240626,<25.0.0.0)
+Requires-Dist: types-requests (>=2.31.0,<3.0.0)
+Requires-Dist: typing-extensions (>=4.12.2,<5.0.0)
+Requires-Dist: unstructured-client (==0.25.5) ; extra == "core"
+Requires-Dist: uvicorn (>=0.27.0.post1,<0.28.0) ; extra == "core"
+Requires-Dist: vecs (>=0.4.0,<0.5.0) ; extra == "core"
+Requires-Dist: xlrd (>=2.0.1,<3.0.0) ; extra == "ingestion-bundle"
+Description-Content-Type: text/markdown
+
+<p align="left">
+  <a href="https://r2r-docs.sciphi.ai"><img src="https://img.shields.io/badge/docs.sciphi.ai-3F16E4" alt="Docs"></a>
+  <a href="https://discord.gg/p6KqD2kjtB"><img src="https://img.shields.io/discord/1120774652915105934?style=social&logo=discord" alt="Discord"></a>
+  <a href="https://github.com/SciPhi-AI"><img src="https://img.shields.io/github/stars/SciPhi-AI/R2R" alt="Github Stars"></a>
+  <a href="https://github.com/SciPhi-AI/R2R/pulse"><img src="https://img.shields.io/github/commit-activity/w/SciPhi-AI/R2R" alt="Commits-per-week"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-purple.svg" alt="License: MIT"></a>
+  <a href="https://gurubase.io/g/r2r"><img src="https://img.shields.io/badge/Gurubase-Ask%20R2R%20Guru-006BFF" alt="Gurubase: R2R Guru"></a>
+</p>
+
+<img width="1041" alt="r2r" src="https://github.com/user-attachments/assets/b6ee6a78-5d37-496d-ae10-ce18eee7a1d6">
+<h3 align="center">
+  Containerized, state of the art Retrieval-Augmented Generation (RAG) with a RESTful API
+</h3>
+
+# About
+R2R (RAG to Riches) is the most advanced AI retrieval system, supporting Retrieval-Augmented Generation (RAG) with production-ready features. Built around a containerized [RESTful API]([https://r2r-docs.sciphi.ai/api-reference/introduction](https://r2r-docs.sciphi.ai/api-and-sdks/introduction)), R2R offers multimodal content ingestion, hybrid search functionality, configurable GraphRAG, and comprehensive user and document management.
+
+For a more complete view of R2R, check out the [full documentation](https://r2r-docs.sciphi.ai/).
+
+## Key Features
+- [**📁 Multimodal Ingestion**](https://r2r-docs.sciphi.ai/documentation/configuration/ingestion): Parse `.txt`, `.pdf`, `.json`, `.png`, `.mp3`, and more.
+- [**🔍 Hybrid Search**](https://r2r-docs.sciphi.ai/cookbooks/hybrid-search): Combine semantic and keyword search with reciprocal rank fusion for enhanced relevancy.
+- [**🔗 Knowledge Graphs**](https://r2r-docs.sciphi.ai/cookbooks/knowledge-graphs): Automatically extract entities and relationships and build knowledge graphs.
+- [**📊 GraphRAG**](https://r2r-docs.sciphi.ai/cookbooks/graphrag): Cluster and summarize communities with over your created graphs for even richer insights.
+- [**🗂️ User Management**](https://r2r-docs.sciphi.ai/cookbooks/user-auth): Efficiently manage documents and user roles within R2R.
+- [**🔭 Observability**](https://r2r-docs.sciphi.ai/cookbooks/observability): Observe and analyze your RAG engine performance.
+- [**🧩 Configuration**](https://r2r-docs.sciphi.ai/documentation/configuration/overview): Setup your application using intuitive configuration files.
+- [**🖥️ Dashboard**](https://r2r-docs.sciphi.ai/cookbooks/application): An open-source React+Next.js admin dashboard to interact with R2R via GUI.
+
+
+## [What's New](https://r2r-docs.sciphi.ai/introduction/whats-new)
+
+- Release 3.3.0&nbsp;&nbsp;&nbsp;&nbsp;December 3, 2024&nbsp;&nbsp;&nbsp;&nbsp;
+
+  Warning: These changes are breaking!
+  - [V3 API Specification](https://r2r-docs.sciphi.ai/api-and-sdks/introduction)
+
+## Install with pip
+The recommended way to get started with R2R is by using our CLI.
+
+```bash
+pip install r2r
+```
+
+
+You may run R2R directly from the python package, but additional dependencies like Postgres+pgvector must be configured and the full R2R core is required:
+
+```bash
+# export OPENAI_API_KEY=sk-...
+# export POSTGRES...
+pip install 'r2r[core,ingestion-bundle]'
+r2r --config-name=default serve
+```
+
+Alternatively, R2R can be launched alongside its requirements inside Docker:
+
+```bash
+# export OPENAI_API_KEY=sk-...
+r2r serve --docker --full
+```
+
+The command above will install the `full` installation which includes Hatchet for orchestration and Unstructured.io for parsing.
+
+## Getting Started
+
+- [Installation](https://r2r-docs.sciphi.ai/documentation/installation/overview): Quick installation of R2R using Docker or pip
+- [Quickstart](https://r2r-docs.sciphi.ai/documentation/quickstart): A quick introduction to R2R's core features
+- [Setup](https://r2r-docs.sciphi.ai/documentation/configuration/overview): Learn how to setup and configure R2R
+- [API & SDKs](https://r2r-docs.sciphi.ai/api-and-sdks/introduction): API reference and Python/JS SDKs for interacting with R2R
+
+## Cookbooks
+
+- Advanced RAG Pipelines
+  - [RAG Agent](https://r2r-docs.sciphi.ai/cookbooks/agent): R2R's powerful RAG agent
+  - [Hybrid Search](https://r2r-docs.sciphi.ai/cookbooks/hybrid-search): Introduction to hybrid search
+  - [Advanced RAG](https://r2r-docs.sciphi.ai/cookbooks/advanced-rag): Advanced RAG features
+
+- Orchestration
+  - [Orchestration](https://r2r-docs.sciphi.ai/cookbooks/orchestration): R2R event orchestration
+
+- User Management
+  - [Web Development](https://r2r-docs.sciphi.ai/cookbooks/web-dev): Building webapps using R2R
+  - [User Auth](https://r2r-docs.sciphi.ai/cookbooks/user-auth): Authenticating users
+  - [Collections](https://r2r-docs.sciphi.ai/cookbooks/collections): Document collections
+  - [Analytics & Observability](https://r2r-docs.sciphi.ai/cookbooks/observability): End-to-end logging and analytics
+  - [Web Application](https://r2r-docs.sciphi.ai/cookbooks/application): Connecting with the R2R Application
+
+
+## Community
+
+[Join our Discord server](https://discord.gg/p6KqD2kjtB) to get support and connect with both the R2R team and other developers in the community. Whether you're encountering issues, looking for advice on best practices, or just want to share your experiences, we're here to help.
+
+# Contributing
+
+We welcome contributions of all sizes! Here's how you can help:
+
+- Open a PR for new features, improvements, or better documentation.
+- Submit a [feature request](https://github.com/SciPhi-AI/R2R/issues/new?assignees=&labels=&projects=&template=feature_request.md&title=) or [bug report](https://github.com/SciPhi-AI/R2R/issues/new?assignees=&labels=&projects=&template=bug_report.md&title=)
+
+### Our Contributors
+<a href="https://github.com/SciPhi-AI/R2R/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=SciPhi-AI/R2R" />
+</a>
+

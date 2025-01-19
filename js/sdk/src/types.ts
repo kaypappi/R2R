@@ -47,6 +47,8 @@ export interface CollectionResponse {
   updatedAt: string;
   userCount: number;
   documentCount: number;
+  subcollections?: string[];
+  parent_id?:string
 }
 
 // Community types

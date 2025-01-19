@@ -16,17 +16,46 @@ def collections():
 @collections.command()
 @click.argument("name", required=True, type=str)
 @click.option("--description", type=str)
+@click.option("--parent-id", type=str, help="Parent collection ID")
 @pass_context
-async def create(ctx: click.Context, name, description):
+async def create(ctx: click.Context, name, description, parent_id):
     """Create a collection."""
     client: R2RAsyncClient = ctx.obj
 
     try:
         with timer():
+            # Create main collection
             response = await client.collections.create(
                 name=name,
                 description=description,
+                parent_id=parent_id,
             )
+
+            # If no parent, create default subcollections
+            if not parent_id:
+                collection_id = response["id"]
+
+                # Create main subcollection
+                main_sub = await client.collections.create(
+                    name="Main",
+                    description="Main subcollection",
+                    parent_id=collection_id,
+                )
+
+                # Create default subcollections
+                default_subs = [
+                    ("Documents", "General documents collection"),
+                    ("Users", "User-related content"),
+                    ("System", "System-generated content"),
+                ]
+
+                for sub_name, sub_desc in default_subs:
+                    await client.collections.create(
+                        name=sub_name,
+                        description=sub_desc,
+                        parent_id=main_sub["id"],
+                    )
+
         click.echo(json.dumps(response, indent=2))
     except R2RException as e:
         click.echo(str(e), err=True)

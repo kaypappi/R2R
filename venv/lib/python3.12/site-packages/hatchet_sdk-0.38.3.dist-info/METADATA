@@ -1,0 +1,31 @@
+Metadata-Version: 2.1
+Name: hatchet-sdk
+Version: 0.38.3
+Summary: 
+Author: Alexander Belanger
+Author-email: alexander@hatchet.run
+Requires-Python: >=3.10,<4.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Dist: aiohttp (>=3.10.5,<4.0.0)
+Requires-Dist: aiohttp-retry (>=2.8.3,<3.0.0)
+Requires-Dist: aiostream (>=0.5.2,<0.6.0)
+Requires-Dist: grpcio (>=1.64.1,<2.0.0)
+Requires-Dist: grpcio-tools (>=1.60.0,<2.0.0)
+Requires-Dist: loguru (>=0.7.2,<0.8.0)
+Requires-Dist: nest-asyncio (>=1.6.0,<2.0.0)
+Requires-Dist: protobuf (>=4.25.2,<5.0.0)
+Requires-Dist: pydantic (>=2.6.3,<3.0.0)
+Requires-Dist: python-dateutil (>=2.9.0.post0,<3.0.0)
+Requires-Dist: python-dotenv (>=1.0.0,<2.0.0)
+Requires-Dist: pyyaml (>=6.0.1,<7.0.0)
+Requires-Dist: tenacity (>=8.4.1)
+Requires-Dist: urllib3 (>=1.26.20)
+Description-Content-Type: text/markdown
+
+# Hatchet Python SDK
+
+This is the [Hatchet](https://hatchet.run) Python SDK. For usage, see the [docs](https://docs.hatchet.run/sdks/python-sdk/).
+

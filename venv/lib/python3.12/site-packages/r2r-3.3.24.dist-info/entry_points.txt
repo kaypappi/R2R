@@ -1,0 +1,3 @@
+[console_scripts]
+r2r=cli.main:main
+
