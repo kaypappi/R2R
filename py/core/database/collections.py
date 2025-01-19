@@ -105,7 +105,8 @@ class PostgresCollectionsHandler(Handler):
             (id, owner_id, name, description, parent_id)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id, owner_id, name, description, graph_sync_status, 
-                      graph_cluster_status, created_at, updated_at, parent_id
+                      graph_cluster_status, created_at, updated_at, parent_id,
+                      subcollections
         """
         params = [
             collection_id or uuid4(),
@@ -140,10 +141,10 @@ class PostgresCollectionsHandler(Handler):
                 )
 
             # If no parent, create default subcollections
-
             main_sub_id = uuid4()
+            
             # Create main subcollection
-            await self.connection_manager.fetchrow_query(
+            main_sub_result = await self.connection_manager.fetchrow_query(
                 query,
                 [
                     main_sub_id,
@@ -154,7 +155,8 @@ class PostgresCollectionsHandler(Handler):
                 ],
             )
 
-            update_parent_query = f"""
+            # Update root collection's subcollections array with main subcollection
+            update_root_query = f"""
                 UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
                 SET subcollections = array_append(
                     COALESCE(subcollections, ARRAY[]::UUID[]), 
@@ -163,12 +165,10 @@ class PostgresCollectionsHandler(Handler):
                 WHERE id = $2
             """
             await self.connection_manager.execute_query(
-                    update_parent_query, [result["id"], parent_id]
-                )        
+                update_root_query, [main_sub_id, result["id"]]
+            )
 
-                
-
-            # Create default subcollections
+            # Create default subcollections under main
             default_subs = [
                 ("Textbooks", "General documents collection"),
                 ("Assignments", "Assignment instructions and solutions"),
@@ -176,7 +176,7 @@ class PostgresCollectionsHandler(Handler):
             ]
 
             for sub_name, sub_desc in default_subs:
-                await self.connection_manager.fetchrow_query(
+                sub_result = await self.connection_manager.fetchrow_query(
                     query,
                     [
                         uuid4(),
@@ -186,17 +186,10 @@ class PostgresCollectionsHandler(Handler):
                         main_sub_id,
                     ],
                 )
-                update_parent_query = f"""
-                UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-                SET subcollections = array_append(
-                    COALESCE(subcollections, ARRAY[]::UUID[]), 
-                    $1
+                # Update main subcollection's subcollections array
+                await self.connection_manager.execute_query(
+                    update_root_query, [sub_result["id"], main_sub_id]
                 )
-                WHERE id = $2
-            """
-            await self.connection_manager.execute_query(
-                    update_parent_query, [result["id"], main_sub_id]
-                ) 
 
             # Get the full collection with subcollections
             return await self.get_collection_by_id(result["id"], include_children=True)
@@ -239,7 +232,7 @@ class PostgresCollectionsHandler(Handler):
         if not result:
             raise HTTPException(status_code=404, detail="Collection not found")
 
-        return CollectionResponse(
+        collection = CollectionResponse(
             id=result["id"],
             owner_id=result["owner_id"],
             name=result["name"],
@@ -253,6 +246,20 @@ class PostgresCollectionsHandler(Handler):
             parent_id=result["parent_id"],
             subcollections=result["subcollections"]
         )
+
+        if include_children and result["subcollections"]:
+            # Recursively fetch subcollections
+            subcollections = []
+            for sub_id in result["subcollections"]:
+                try:
+                    sub_collection = await self.get_collection_by_id(sub_id, include_children=True)
+                    subcollections.append(sub_collection)
+                except HTTPException:
+                    # If subcollection not found, skip it
+                    continue
+            collection.subcollection_details = subcollections
+
+        return collection
 
     async def update_collection(
         self,
@@ -462,22 +469,39 @@ class PostgresCollectionsHandler(Handler):
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         query = f"""
-            WITH root_collections AS (
+            WITH RECURSIVE collection_tree AS (
+                -- Base case: root collections
                 SELECT
                     c.*,
-                    ARRAY(
-                        SELECT sc.id
-                        FROM {self.project_name}.collections sc
-                        WHERE sc.parent_id = c.id
-                    ) AS subcollection_ids,
+                    0 as level,
+                    ARRAY[]::UUID[] as path,
                     COUNT(*) OVER() as total_entries
                 FROM {self.project_name}.collections c
                 {where_clause}
-                ORDER BY created_at DESC
-                OFFSET ${param_index}
-                LIMIT ${param_index + 1}
+                
+                UNION ALL
+                
+                -- Recursive case: subcollections
+                SELECT
+                    sub.*,
+                    ct.level + 1,
+                    ct.path || sub.id,
+                    ct.total_entries
+                FROM {self.project_name}.collections sub
+                JOIN collection_tree ct ON sub.parent_id = ct.id
+                WHERE sub.id = ANY(ct.subcollections)
             )
-            SELECT * FROM root_collections
+            SELECT DISTINCT ON (id)
+                *,
+                (
+                    SELECT json_agg(sub.*)
+                    FROM {self.project_name}.collections sub
+                    WHERE sub.parent_id = collection_tree.id
+                ) as subcollection_details
+            FROM collection_tree
+            ORDER BY id, level DESC
+            OFFSET ${param_index}
+            LIMIT ${param_index + 1}
         """
         params.extend([offset, limit])
 
@@ -489,8 +513,10 @@ class PostgresCollectionsHandler(Handler):
 
             total_entries = results[0]["total_entries"] if results else 0
 
-            collections = [
-                CollectionResponse(
+            # Build collection hierarchy
+            collections = []
+            for row in results:
+                collection = CollectionResponse(
                     id=row["id"],
                     owner_id=row["owner_id"],
                     name=row["name"],
@@ -502,10 +528,12 @@ class PostgresCollectionsHandler(Handler):
                     user_count=row.get("user_count", 0),
                     document_count=row.get("document_count", 0),
                     parent_id=row["parent_id"],
-                    subcollection_ids=row["subcollection_ids"] or [],
+                    subcollections=row["subcollections"] or [],
+                    subcollection_details=row.get("subcollection_details", []) if row.get("subcollection_details") else []
                 )
-                for row in results
-            ]
+                
+                if not row["parent_id"]:
+                    collections.append(collection)
 
             return {"results": collections, "total_entries": total_entries}
         except Exception as e:

@@ -74,6 +74,7 @@ class CollectionResponse(BaseModel):
     document_count: int
     parent_id: Optional[UUID]
     subcollections: Optional[list[UUID]] = None
+    subcollection_details: Optional[list['CollectionResponse']] = None
 
 
 class ConversationResponse(BaseModel):
