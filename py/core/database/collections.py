@@ -2,6 +2,7 @@ import csv
 import json
 import logging
 import tempfile
+import os
 from pydantic import BaseModel
 from typing import IO, Any, Optional, List
 from uuid import UUID, uuid4
@@ -50,6 +51,8 @@ class PostgresCollectionsHandler(Handler):
             owner_id UUID,
             name TEXT NOT NULL,
             description TEXT,
+            theme TEXT DEFAULT '#a855f7',
+            icon TEXT DEFAULT 'Book',
             graph_sync_status TEXT DEFAULT 'pending',
             graph_cluster_status TEXT DEFAULT 'pending',
             created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -80,10 +83,42 @@ class PostgresCollectionsHandler(Handler):
         description: str = "",
         collection_id: Optional[UUID] = None,
         parent_id: Optional[UUID] = None,
+        theme: Optional[str] = None,
+        icon: Optional[str] = None,
     ) -> CollectionResponse:
         if not name and not collection_id:
             name = self.config.default_collection_name
             collection_id = generate_default_user_collection_id(owner_id)
+
+        # Get defaults from environment variables or use hardcoded defaults
+        default_theme = os.getenv("R2R_DEFAULT_COLLECTION_THEME", "#a855f7")
+        default_icon = os.getenv("R2R_DEFAULT_COLLECTION_ICON", "Book")
+        main_subcollection_name = os.getenv("R2R_MAIN_SUBCOLLECTION_NAME", "Main")
+        main_subcollection_desc = os.getenv("R2R_MAIN_SUBCOLLECTION_DESC", "Main subcollection")
+        main_subcollection_theme = os.getenv("R2R_MAIN_SUBCOLLECTION_THEME", default_theme)
+        main_subcollection_icon = os.getenv("R2R_MAIN_SUBCOLLECTION_ICON", default_icon)
+
+        # Default subcollections configuration from env
+        default_subs = [
+            (
+                os.getenv("R2R_TEXTBOOKS_NAME", "Textbooks"),
+                os.getenv("R2R_TEXTBOOKS_DESC", "General documents collection"),
+                os.getenv("R2R_TEXTBOOKS_THEME", default_theme),
+                os.getenv("R2R_TEXTBOOKS_ICON", "BookOpen"),
+            ),
+            (
+                os.getenv("R2R_ASSIGNMENTS_NAME", "Assignments"),
+                os.getenv("R2R_ASSIGNMENTS_DESC", "Assignment instructions and solutions"),
+                os.getenv("R2R_ASSIGNMENTS_THEME", default_theme),
+                os.getenv("R2R_ASSIGNMENTS_ICON", "ClipboardList"),
+            ),
+            (
+                os.getenv("R2R_NOTES_NAME", "Notes"),
+                os.getenv("R2R_NOTES_DESC", "Class notes eg. written notes"),
+                os.getenv("R2R_NOTES_THEME", default_theme),
+                os.getenv("R2R_NOTES_ICON", "PencilSquare"),
+            ),
+        ]
 
         # Validate parent_id if provided
         if parent_id:
@@ -102,11 +137,11 @@ class PostgresCollectionsHandler(Handler):
         # Create the collection
         query = f"""
             INSERT INTO {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-            (id, owner_id, name, description, parent_id)
-            VALUES ($1, $2, $3, $4, $5)
+            (id, owner_id, name, description, parent_id, theme, icon)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, owner_id, name, description, graph_sync_status, 
                       graph_cluster_status, created_at, updated_at, parent_id,
-                      subcollections
+                      subcollections, theme, icon
         """
         params = [
             collection_id or uuid4(),
@@ -114,6 +149,8 @@ class PostgresCollectionsHandler(Handler):
             name,
             description,
             parent_id,
+            theme or default_theme,
+            icon or default_icon,
         ]
 
         try:
@@ -144,14 +181,16 @@ class PostgresCollectionsHandler(Handler):
             main_sub_id = uuid4()
             
             # Create main subcollection
-            main_sub_result = await self.connection_manager.fetchrow_query(
+            await self.connection_manager.fetchrow_query(
                 query,
                 [
                     main_sub_id,
                     owner_id,
-                    "Main",
-                    "Main subcollection",
+                    main_subcollection_name,
+                    main_subcollection_desc,
                     result["id"],
+                    main_subcollection_theme,
+                    main_subcollection_icon,
                 ],
             )
 
@@ -169,13 +208,7 @@ class PostgresCollectionsHandler(Handler):
             )
 
             # Create default subcollections under main
-            default_subs = [
-                ("Textbooks", "General documents collection"),
-                ("Assignments", "Assignment instructions and solutions"),
-                ("Notes", "Class notes eg. written notes"),
-            ]
-
-            for sub_name, sub_desc in default_subs:
+            for sub_name, sub_desc, sub_theme, sub_icon in default_subs:
                 sub_result = await self.connection_manager.fetchrow_query(
                     query,
                     [
@@ -184,6 +217,8 @@ class PostgresCollectionsHandler(Handler):
                         sub_name,
                         sub_desc,
                         main_sub_id,
+                        sub_theme,
+                        sub_icon,
                     ],
                 )
                 # Update main subcollection's subcollections array
@@ -215,6 +250,8 @@ class PostgresCollectionsHandler(Handler):
                 owner_id,
                 name,
                 description,
+                theme,
+                icon,
                 graph_sync_status,
                 graph_cluster_status,
                 created_at,
@@ -237,6 +274,8 @@ class PostgresCollectionsHandler(Handler):
             owner_id=result["owner_id"],
             name=result["name"],
             description=result["description"],
+            theme=result["theme"],
+            icon=result["icon"],
             graph_cluster_status=result["graph_cluster_status"],
             graph_sync_status=result["graph_sync_status"],
             created_at=result["created_at"],
@@ -468,72 +507,59 @@ class PostgresCollectionsHandler(Handler):
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-        query = f"""
-            WITH RECURSIVE collection_tree AS (
-                -- Base case: root collections
-                SELECT
-                    c.*,
-                    0 as level,
-                    ARRAY[]::UUID[] as path,
-                    COUNT(*) OVER() as total_entries
-                FROM {self.project_name}.collections c
-                {where_clause}
-                
-                UNION ALL
-                
-                -- Recursive case: subcollections
-                SELECT
-                    sub.*,
-                    ct.level + 1,
-                    ct.path || sub.id,
-                    ct.total_entries
-                FROM {self.project_name}.collections sub
-                JOIN collection_tree ct ON sub.parent_id = ct.id
-                WHERE sub.id = ANY(ct.subcollections)
-            )
-            SELECT DISTINCT ON (id)
-                *,
-                (
-                    SELECT json_agg(sub.*)
-                    FROM {self.project_name}.collections sub
-                    WHERE sub.parent_id = collection_tree.id
-                ) as subcollection_details
-            FROM collection_tree
-            ORDER BY id, level DESC
+        # First, get root collections with pagination
+        root_query = f"""
+            SELECT 
+                c.*,
+                COUNT(*) OVER() as total_entries
+            FROM {self.project_name}.collections c
+            {where_clause}
+            ORDER BY c.created_at DESC
             OFFSET ${param_index}
             LIMIT ${param_index + 1}
         """
         params.extend([offset, limit])
 
         try:
-            results = await self.connection_manager.fetch_query(query, params)
+            root_results = await self.connection_manager.fetch_query(root_query, params)
 
-            if not results:
+            if not root_results:
                 return {"results": [], "total_entries": 0}
 
-            total_entries = results[0]["total_entries"] if results else 0
+            total_entries = root_results[0]["total_entries"] if root_results else 0
 
             # Build collection hierarchy
             collections = []
-            for row in results:
+            for row in root_results:
                 collection = CollectionResponse(
                     id=row["id"],
                     owner_id=row["owner_id"],
                     name=row["name"],
                     description=row["description"],
+                    theme=row["theme"],
+                    icon=row["icon"],
                     graph_cluster_status=row["graph_cluster_status"],
                     graph_sync_status=row["graph_sync_status"],
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
                     user_count=row.get("user_count", 0),
                     document_count=row.get("document_count", 0),
-                    parent_id=row["parent_id"],
+                    parent_id=None,  # These are root collections
                     subcollections=row["subcollections"] or [],
-                    subcollection_details=row.get("subcollection_details", []) if row.get("subcollection_details") else []
                 )
-                
-                if not row["parent_id"]:
-                    collections.append(collection)
+
+                # Fetch all subcollections recursively
+                if row["subcollections"]:
+                    subcollections = []
+                    for sub_id in row["subcollections"]:
+                        try:
+                            sub_collection = await self.get_collection_by_id(sub_id, include_children=True)
+                            subcollections.append(sub_collection)
+                        except HTTPException:
+                            continue
+                    collection.subcollection_details = subcollections
+
+                collections.append(collection)
 
             return {"results": collections, "total_entries": total_entries}
         except Exception as e:
