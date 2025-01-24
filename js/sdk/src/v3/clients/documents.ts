@@ -121,9 +121,7 @@ export class DocumentsClient {
       );
     }
     if (options.collectionIds) {
-      options.collectionIds.forEach((id) => {
-        formData.append("collection_ids", id);
-      });
+      formData.append("collection_ids", JSON.stringify(options.collectionIds));
     }
     if (options.runWithOrchestration !== undefined) {
       formData.append(

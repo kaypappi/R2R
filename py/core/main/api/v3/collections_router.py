@@ -55,15 +55,18 @@ async def authorize_collection_action(
     if auth_user.is_superuser:
         return True
 
-    # Fetch collection details: owner_id and members
-    results = (
-        await services.management.collections_overview(
-            0, 1, collection_ids=[collection_id]
-        )
-    )["results"]
-    if len(results) == 0:
+    # First check if collection exists
+    if not await services.management.collection_exists(collection_id):
         raise R2RException("The specified collection does not exist.", 404)
-    details = results[0]
+
+    # Fetch collection details: owner_id and members
+    try:
+        details = await services.management.get_collection_by_id(collection_id)
+    except R2RException as e:
+        if e.status_code == 404:
+            raise R2RException("The specified collection does not exist.", 404)
+        raise e
+
     owner_id = details.owner_id
 
     # Check if user is owner
@@ -80,6 +83,16 @@ async def authorize_collection_action(
             raise R2RException(
                 "Insufficient permissions for this action.", 403
             )
+
+    # If this is a subcollection, check if user has access to parent collection
+    if details.parent_id:
+        try:
+            await authorize_collection_action(
+                auth_user, details.parent_id, action, services
+            )
+            return True
+        except R2RException:
+            pass  # Continue to final check if parent access check fails
 
     # User is neither owner nor member
     raise R2RException("You do not have access to this collection.", 403)
@@ -107,7 +120,8 @@ class CollectionsRouter(BaseRouterV3):
 
                             result = client.collections.create(
                                 name="My New Collection",
-                                description="This is a sample collection"
+                                description="This is a sample collection",
+                                parent_id="123e4567-e89b-12d3-a456-426614174000"  # Optional parent collection ID
                             )
                         """
                         ),
@@ -123,7 +137,8 @@ class CollectionsRouter(BaseRouterV3):
                             function main() {
                                 const response = await client.collections.create({
                                     name: "My New Collection",
-                                    description: "This is a sample collection"
+                                    description: "This is a sample collection",
+                                    parentId: "123e4567-e89b-12d3-a456-426614174000"  // Optional parent collection ID
                                 });
                             }
 
@@ -135,7 +150,7 @@ class CollectionsRouter(BaseRouterV3):
                         "lang": "CLI",
                         "source": textwrap.dedent(
                             """
-                            r2r collections create "My New Collection" --description="This is a sample collection"
+                            r2r collections create "My New Collection" --description="This is a sample collection" --parent-id=123e4567-e89b-12d3-a456-426614174000
                             """
                         ),
                     },
@@ -146,7 +161,7 @@ class CollectionsRouter(BaseRouterV3):
                             curl -X POST "https://api.example.com/v3/collections" \\
                                  -H "Content-Type: application/json" \\
                                  -H "Authorization: Bearer YOUR_API_KEY" \\
-                                 -d '{"name": "My New Collection", "description": "This is a sample collection"}'
+                                 -d '{"name": "My New Collection", "description": "This is a sample collection", "parent_id": "123e4567-e89b-12d3-a456-426614174000"}'
                         """
                         ),
                     },
@@ -159,6 +174,15 @@ class CollectionsRouter(BaseRouterV3):
             description: Optional[str] = Body(
                 None, description="An optional description of the collection"
             ),
+            theme: Optional[str] = Body(
+                None, description="The theme color for the collection"
+            ),
+            icon: Optional[str] = Body(
+                None, description="The icon for the collection"
+            ),
+            parent_id: Optional[UUID] = Body(
+                None, description="The ID of the parent collection if this is a subcollection"
+            ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedCollectionResponse:
             """
@@ -166,7 +190,11 @@ class CollectionsRouter(BaseRouterV3):
 
             This endpoint allows authenticated users to create a new collection with a specified name
             and optional description. The user creating the collection is automatically added as a member.
+            
+            If a parent_id is provided, the new collection will be created as a subcollection of the specified parent.
+            The user must have access to the parent collection to create a subcollection within it.
             """
+            # Check if user has reached their collection limit
             user_collections_count = (
                 await self.services.management.collections_overview(
                     user_ids=[auth_user.id], limit=1, offset=0
@@ -182,11 +210,40 @@ class CollectionsRouter(BaseRouterV3):
                     f"User has reached the maximum number of collections allowed ({user_max_collections}).",
                     400,
                 )
+
+            # If parent_id is provided, verify access and existence
+            if parent_id:
+                # First check if parent collection exists
+                parent_exists = await self.services.management.collection_exists(parent_id)
+                if not parent_exists:
+                    raise R2RException(
+                        "Parent collection does not exist.",
+                        404,
+                    )
+                
+                # Then check if user has access to the parent collection
+                """ try:
+                    await authorize_collection_action(
+                        auth_user, parent_id, CollectionAction.EDIT, self.services
+                    )
+                except R2RException as e:
+                    if e.status_code == 404:
+                        raise R2RException(
+                            "Parent collectionssss does not exist.",
+                            404,
+                        )
+                    raise e  # Re-raise other exceptions (like 403 for insufficient permissions) """
+
+            # Create the collection
             collection = await self.services.management.create_collection(
                 owner_id=auth_user.id,
                 name=name,
                 description=description,
+                theme=theme,
+                icon=icon,
+                parent_id=parent_id,
             )
+
             # Add the creating user to the collection
             await self.services.management.add_user_to_collection(
                 auth_user.id, collection.id
@@ -515,7 +572,8 @@ class CollectionsRouter(BaseRouterV3):
                             result = client.collections.update(
                                 "123e4567-e89b-12d3-a456-426614174000",
                                 name="Updated Collection Name",
-                                description="Updated description"
+                                description="Updated description",
+                                parent_id="456e4567-e89b-12d3-a456-426614174000"  # Optional parent collection ID
                             )
                         """
                         ),
@@ -532,7 +590,8 @@ class CollectionsRouter(BaseRouterV3):
                                 const response = await client.collections.update({
                                     id: "123e4567-e89b-12d3-a456-426614174000",
                                     name: "Updated Collection Name",
-                                    description: "Updated description"
+                                    description: "Updated description",
+                                    parentId: "456e4567-e89b-12d3-a456-426614174000"  // Optional parent collection ID
                                 });
                             }
 
@@ -547,7 +606,7 @@ class CollectionsRouter(BaseRouterV3):
                             curl -X POST "https://api.example.com/v3/collections/123e4567-e89b-12d3-a456-426614174000" \\
                                  -H "Content-Type: application/json" \\
                                  -H "Authorization: Bearer YOUR_API_KEY" \\
-                                 -d '{"name": "Updated Collection Name", "description": "Updated description"}'
+                                 -d '{"name": "Updated Collection Name", "description": "Updated description", "parent_id": "456e4567-e89b-12d3-a456-426614174000"}'
                         """
                         ),
                     },
@@ -566,6 +625,9 @@ class CollectionsRouter(BaseRouterV3):
             description: Optional[str] = Body(
                 None, description="An optional description of the collection"
             ),
+            parent_id: Optional[UUID] = Body(
+                None, description="The ID of the parent collection if this is a subcollection"
+            ),
             generate_description: Optional[bool] = Body(
                 False,
                 description="Whether to generate a new synthetic description for the collection",
@@ -575,8 +637,10 @@ class CollectionsRouter(BaseRouterV3):
             """
             Update an existing collection's configuration.
 
-            This endpoint allows updating the name and description of an existing collection.
+            This endpoint allows updating the name, description, and parent collection of an existing collection.
             The user must have appropriate permissions to modify the collection.
+            If a parent_id is provided, the collection will be moved to be a subcollection of the specified parent.
+            The user must have access to both the collection being updated and the new parent collection.
             """
             await authorize_collection_action(
                 auth_user, id, CollectionAction.EDIT, self.services
@@ -588,10 +652,34 @@ class CollectionsRouter(BaseRouterV3):
                     400,
                 )
 
+            # If parent_id is provided, verify access and existence
+            if parent_id:
+                # First check if parent collection exists
+                parent_exists = await self.services.management.collection_exists(parent_id)
+                if not parent_exists:
+                    raise R2RException(
+                        "Parent collection does not exist.",
+                        404,
+                    )
+                
+                # Then check if user has access to the parent collection
+                try:
+                    await authorize_collection_action(
+                        auth_user, parent_id, CollectionAction.EDIT, self.services
+                    )
+                except R2RException as e:
+                    if e.status_code == 404:
+                        raise R2RException(
+                            "Parent collection does not exist.",
+                            404,
+                        )
+                    raise e  # Re-raise other exceptions (like 403 for insufficient permissions)
+
             return await self.services.management.update_collection(  # type: ignore
                 id,
                 name=name,
                 description=description,
+                parent_id=parent_id,
                 generate_description=generate_description,
             )
 
@@ -746,101 +834,40 @@ class CollectionsRouter(BaseRouterV3):
 
         @self.router.get(
             "/collections/{id}/documents",
-            summary="List documents in collection",
             dependencies=[Depends(self.rate_limit_dependency)],
-            openapi_extra={
-                "x-codeSamples": [
-                    {
-                        "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
-                            from r2r import R2RClient
-
-                            client = R2RClient()
-                            # when using auth, do client.login(...)
-
-                            result = client.collections.list_documents(
-                                "123e4567-e89b-12d3-a456-426614174000",
-                                offset=0,
-                                limit=10,
-                            )
-                        """
-                        ),
-                    },
-                    {
-                        "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
-                            const { r2rClient } = require("r2r-js");
-
-                            const client = new r2rClient();
-
-                            function main() {
-                                const response = await client.collections.listDocuments({id: "123e4567-e89b-12d3-a456-426614174000"});
-                            }
-
-                            main();
-                            """
-                        ),
-                    },
-                    {
-                        "lang": "CLI",
-                        "source": textwrap.dedent(
-                            """
-                            r2r collections list-documents 123e4567-e89b-12d3-a456-426614174000
-                            """
-                        ),
-                    },
-                    {
-                        "lang": "cURL",
-                        "source": textwrap.dedent(
-                            """
-                            curl -X GET "https://api.example.com/v3/collections/123e4567-e89b-12d3-a456-426614174000/documents?offset=0&limit=10" \\
-                                 -H "Authorization: Bearer YOUR_API_KEY"
-                        """
-                        ),
-                    },
-                ]
-            },
+            summary="List documents in a collection",
         )
         @self.base_endpoint
-        async def get_collection_documents(
-            id: UUID = Path(
-                ..., description="The unique identifier of the collection"
-            ),
-            offset: int = Query(
-                0,
-                ge=0,
-                description="Specifies the number of objects to skip. Defaults to 0.",
-            ),
-            limit: int = Query(
-                100,
-                ge=1,
-                le=1000,
-                description="Specifies a limit on the number of objects to return, ranging between 1 and 100. Defaults to 100.",
-            ),
+        async def list_documents_in_collection(
+            id: UUID = Path(..., description="Collection ID"),
+            offset: int = Query(0, description="Number of documents to skip"),
+            limit: int = Query(100, description="Maximum number of documents to return"),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedDocumentsResponse:
-            """
-            Get all documents in a collection with pagination and sorting options.
+            """List all documents in a collection."""
+            # First check if collection exists
+            if not await self.services.management.collection_exists(id):
+                raise R2RException("The specified collection does not exist.", 404)
 
-            This endpoint retrieves a paginated list of documents associated with a specific collection.
-            It supports sorting options to customize the order of returned documents.
-            """
-            await authorize_collection_action(
-                auth_user, id, CollectionAction.VIEW, self.services
-            )
-
-            documents_in_collection_response = (
-                await self.services.management.documents_in_collection(
-                    id, offset, limit
+            # Then check if user has access to the collection
+            try:
+                await authorize_collection_action(
+                    auth_user,
+                    id,
+                    CollectionAction.VIEW,
+                    self.services,
                 )
-            )
+            except R2RException as e:
+                if e.status_code == 404:
+                    raise R2RException("The specified collection does not exist.", 404)
+                raise
 
-            return documents_in_collection_response["results"], {  # type: ignore
-                "total_entries": documents_in_collection_response[
-                    "total_entries"
-                ]
+            documents_in_collection_response = await self.services.management.documents_in_collection(
+                id, offset, limit
+            )
+            
+            return documents_in_collection_response["results"], {
+                "total_entries": documents_in_collection_response["total_entries"]
             }
 
         @self.router.delete(

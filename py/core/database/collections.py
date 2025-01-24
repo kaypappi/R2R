@@ -45,6 +45,7 @@ class PostgresCollectionsHandler(Handler):
         super().__init__(project_name, connection_manager)
 
     async def create_tables(self) -> None:
+        # First create the base table
         query = f"""
         CREATE TABLE IF NOT EXISTS {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -62,19 +63,62 @@ class PostgresCollectionsHandler(Handler):
             parent_id UUID REFERENCES {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}(id) ON DELETE SET NULL,
             subcollections UUID[] DEFAULT ARRAY[]::UUID[] 
         );
+
+        -- Add theme column if it doesn't exist
+        DO $$ 
+        BEGIN 
+            IF NOT EXISTS (
+                SELECT 1 
+                FROM information_schema.columns 
+                WHERE table_name = '{self.TABLE_NAME}' 
+                AND column_name = 'theme'
+                AND table_schema = '{self.project_name}'
+            ) THEN
+                ALTER TABLE {self._get_table_name(self.TABLE_NAME)} 
+                ADD COLUMN theme TEXT DEFAULT '#a855f7';
+            END IF;
+        END $$;
+
+        -- Add icon column if it doesn't exist
+        DO $$ 
+        BEGIN 
+            IF NOT EXISTS (
+                SELECT 1 
+                FROM information_schema.columns 
+                WHERE table_name = '{self.TABLE_NAME}' 
+                AND column_name = 'icon'
+                AND table_schema = '{self.project_name}'
+            ) THEN
+                ALTER TABLE {self._get_table_name(self.TABLE_NAME)} 
+                ADD COLUMN icon TEXT DEFAULT 'Book';
+            END IF;
+        END $$;
         """
         await self.connection_manager.execute_query(query)
     # Add subcollections column if it doesn't exist
         
 
     async def collection_exists(self, collection_id: UUID) -> bool:
-        """Check if a collection exists."""
+        """Check if a collection exists, either as a root collection or as a subcollection."""
         query = f"""
-            SELECT 1 FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-            WHERE id = $1
+            WITH RECURSIVE collection_tree AS (
+                -- Base case: direct collection
+                SELECT id FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
+                WHERE id = $1
+                
+                UNION
+                
+                -- Recursive case: check subcollections
+                SELECT unnest(c.subcollections)
+                FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
+                WHERE c.subcollections IS NOT NULL
+            )
+            SELECT EXISTS (
+                SELECT 1 FROM collection_tree
+            );
         """
         result = await self.connection_manager.fetchrow_query(query, [collection_id])
-        return result is not None
+        return result["exists"] if result else False
 
     async def create_collection(
         self,
@@ -123,15 +167,15 @@ class PostgresCollectionsHandler(Handler):
         # Validate parent_id if provided
         if parent_id:
             if not await self.collection_exists(parent_id):
-                raise HTTPException(
+                raise R2RException(
                     status_code=404,
-                    detail="Parent collection not found",
+                    message="Parent collection not found",
                 )
             parent_collection = await self.get_collection_by_id(parent_id)
             if parent_collection.owner_id != owner_id:
-                raise HTTPException(
+                raise R2RException(
                     status_code=403,
-                    detail="You do not have permission to create a subcollection in this parent collection",
+                    message="You do not have permission to create a subcollection in this parent collection",
                 )
 
         # Create the collection
@@ -176,58 +220,58 @@ class PostgresCollectionsHandler(Handler):
                 return await self.get_collection_by_id(
                     result["id"], include_children=True
                 )
-
-            # If no parent, create default subcollections
-            main_sub_id = uuid4()
-            
-            # Create main subcollection
-            await self.connection_manager.fetchrow_query(
-                query,
-                [
-                    main_sub_id,
-                    owner_id,
-                    main_subcollection_name,
-                    main_subcollection_desc,
-                    result["id"],
-                    main_subcollection_theme,
-                    main_subcollection_icon,
-                ],
-            )
-
-            # Update root collection's subcollections array with main subcollection
-            update_root_query = f"""
-                UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-                SET subcollections = array_append(
-                    COALESCE(subcollections, ARRAY[]::UUID[]), 
-                    $1
-                )
-                WHERE id = $2
-            """
-            await self.connection_manager.execute_query(
-                update_root_query, [main_sub_id, result["id"]]
-            )
-
-            # Create default subcollections under main
-            for sub_name, sub_desc, sub_theme, sub_icon in default_subs:
-                sub_result = await self.connection_manager.fetchrow_query(
+            else:
+                # If no parent, create default subcollections
+                main_sub_id = uuid4()
+                
+                # Create main subcollection
+                await self.connection_manager.fetchrow_query(
                     query,
                     [
-                        uuid4(),
-                        owner_id,
-                        sub_name,
-                        sub_desc,
                         main_sub_id,
-                        sub_theme,
-                        sub_icon,
+                        owner_id,
+                        main_subcollection_name,
+                        main_subcollection_desc,
+                        result["id"],
+                        main_subcollection_theme,
+                        main_subcollection_icon,
                     ],
                 )
-                # Update main subcollection's subcollections array
+
+                # Update root collection's subcollections array with main subcollection
+                update_root_query = f"""
+                    UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
+                    SET subcollections = array_append(
+                        COALESCE(subcollections, ARRAY[]::UUID[]), 
+                        $1
+                    )
+                    WHERE id = $2
+                """
                 await self.connection_manager.execute_query(
-                    update_root_query, [sub_result["id"], main_sub_id]
+                    update_root_query, [main_sub_id, result["id"]]
                 )
 
-            # Get the full collection with subcollections
-            return await self.get_collection_by_id(result["id"], include_children=True)
+                # Create default subcollections under main
+                for sub_name, sub_desc, sub_theme, sub_icon in default_subs:
+                    sub_result = await self.connection_manager.fetchrow_query(
+                        query,
+                        [
+                            uuid4(),
+                            owner_id,
+                            sub_name,
+                            sub_desc,
+                            main_sub_id,
+                            sub_theme,
+                            sub_icon,
+                        ],
+                    )
+                    # Update main subcollection's subcollections array
+                    await self.connection_manager.execute_query(
+                        update_root_query, [sub_result["id"], main_sub_id]
+                    )
+
+                # Get the full collection with subcollections
+                return await self.get_collection_by_id(result["id"], include_children=True)
 
         except UniqueViolationError:
             raise R2RException(
@@ -267,7 +311,7 @@ class PostgresCollectionsHandler(Handler):
         result = await self.connection_manager.fetchrow_query(query, [collection_id])
 
         if not result:
-            raise HTTPException(status_code=404, detail="Collection not found")
+            raise R2RException(status_code=404, message="Collection not found")
 
         collection = CollectionResponse(
             id=result["id"],
@@ -293,7 +337,7 @@ class PostgresCollectionsHandler(Handler):
                 try:
                     sub_collection = await self.get_collection_by_id(sub_id, include_children=True)
                     subcollections.append(sub_collection)
-                except HTTPException:
+                except R2RException:
                     # If subcollection not found, skip it
                     continue
             collection.subcollection_details = subcollections
@@ -305,10 +349,15 @@ class PostgresCollectionsHandler(Handler):
         collection_id: UUID,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        parent_id: Optional[UUID] = None,
     ) -> CollectionResponse:
         """Update an existing collection."""
         if not await self.collection_exists(collection_id):
             raise R2RException(status_code=404, message="Collection not found")
+
+        # If parent_id is provided, verify it exists
+        if parent_id is not None and not await self.collection_exists(parent_id):
+            raise R2RException(status_code=404, message="Parent collection not found")
 
         update_fields = []
         params: list = []
@@ -324,6 +373,32 @@ class PostgresCollectionsHandler(Handler):
             params.append(description)
             param_index += 1
 
+        if parent_id is not None:
+            # First, remove this collection from its current parent's subcollections array
+            old_parent_query = f"""
+                UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
+                SET subcollections = array_remove(subcollections, $1)
+                WHERE id IN (
+                    SELECT parent_id 
+                    FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
+                    WHERE id = $1
+                )
+            """
+            await self.connection_manager.execute_query(old_parent_query, [collection_id])
+
+            # Then update the parent_id and add to new parent's subcollections
+            update_fields.append(f"parent_id = ${param_index}")
+            params.append(parent_id)
+            param_index += 1
+
+            # Add this collection to the new parent's subcollections array
+            new_parent_query = f"""
+                UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
+                SET subcollections = array_append(subcollections, $1)
+                WHERE id = $2
+            """
+            await self.connection_manager.execute_query(new_parent_query, [collection_id, parent_id])
+
         if not update_fields:
             raise R2RException(status_code=400, message="No fields to update")
 
@@ -335,7 +410,7 @@ class PostgresCollectionsHandler(Handler):
                 UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
                 SET {", ".join(update_fields)}
                 WHERE id = ${param_index}
-                RETURNING id, owner_id, name, description, graph_sync_status, graph_cluster_status, created_at, updated_at
+                RETURNING id, owner_id, name, description, graph_sync_status, graph_cluster_status, created_at, updated_at, parent_id, subcollections
             )
             SELECT
                 uc.*,
@@ -344,7 +419,7 @@ class PostgresCollectionsHandler(Handler):
             FROM updated_collection uc
             LEFT JOIN {self._get_table_name("users")} u ON uc.id = ANY(u.collection_ids)
             LEFT JOIN {self._get_table_name("documents")} d ON uc.id = ANY(d.collection_ids)
-            GROUP BY uc.id, uc.owner_id, uc.name, uc.description, uc.graph_sync_status, uc.graph_cluster_status, uc.created_at, uc.updated_at
+            GROUP BY uc.id, uc.owner_id, uc.name, uc.description, uc.graph_sync_status, uc.graph_cluster_status, uc.created_at, uc.updated_at, uc.parent_id, uc.subcollections
         """
         try:
             result = await self.connection_manager.fetchrow_query(query, params)
@@ -362,6 +437,8 @@ class PostgresCollectionsHandler(Handler):
                 updated_at=result["updated_at"],
                 user_count=result["user_count"],
                 document_count=result["document_count"],
+                parent_id=result["parent_id"],
+                subcollections=result["subcollections"] or [],
             )
         except Exception as e:
             raise HTTPException(
@@ -421,6 +498,7 @@ class PostgresCollectionsHandler(Handler):
         """
         if not await self.collection_exists(collection_id):
             raise R2RException(status_code=404, message="Collection not found")
+        
         query = f"""
             SELECT d.id, d.owner_id, d.type, d.metadata, d.title, d.version,
                 d.size_in_bytes, d.ingestion_status, d.extraction_status, d.created_at, d.updated_at, d.summary,
@@ -440,7 +518,7 @@ class PostgresCollectionsHandler(Handler):
         documents = [
             DocumentResponse(
                 id=row["id"],
-                collection_ids=[collection_id],
+                collection_ids=[collection_id],  # Only return the requested collection ID
                 owner_id=row["owner_id"],
                 document_type=DocumentType(row["type"]),
                 metadata=json.loads(row["metadata"]),
@@ -461,66 +539,66 @@ class PostgresCollectionsHandler(Handler):
 
     async def get_collections_overview(
         self,
-        offset: int,
-        limit: int,
+        offset: int = 0,
+        limit: int = 100,
         filter_user_ids: Optional[list[UUID]] = None,
         filter_document_ids: Optional[list[UUID]] = None,
         filter_collection_ids: Optional[list[UUID]] = None,
     ) -> dict[str, list[CollectionResponse] | int]:
-        conditions = []
-        params: list[Any] = []
-        param_index = 1
-
-        if filter_user_ids:
-            conditions.append(
-                f"""
-                c.id IN (
-                    SELECT unnest(collection_ids)
-                    FROM {self.project_name}.users
-                    WHERE id = ANY(${param_index})
-                )
-                """
-            )
-            params.append(filter_user_ids)
-            param_index += 1
-
-        if filter_document_ids:
-            conditions.append(
-                f"""
-                c.id IN (
-                    SELECT unnest(collection_ids)
-                    FROM {self.project_name}.documents
-                    WHERE id = ANY(${param_index})
-                )
-                """
-            )
-            params.append(filter_document_ids)
-            param_index += 1
-
-        if filter_collection_ids:
-            conditions.append(f"c.id = ANY(${param_index})")
-            params.append(filter_collection_ids)
-            param_index += 1
-
-        # Only get root collections (no parent)
-        conditions.append("c.parent_id IS NULL")
-
-        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
-        # First, get root collections with pagination
-        root_query = f"""
-            SELECT 
-                c.*,
-                COUNT(*) OVER() as total_entries
-            FROM {self.project_name}.collections c
-            {where_clause}
-            ORDER BY c.created_at DESC
-            OFFSET ${param_index}
-            LIMIT ${param_index + 1}
-        """
-        params.extend([offset, limit])
-
         try:
+            conditions = []
+            params: list[Any] = []
+            param_index = 1
+
+            if filter_user_ids:
+                conditions.append(
+                    f"""
+                    c.id IN (
+                        SELECT unnest(collection_ids)
+                        FROM {self.project_name}.users
+                        WHERE id = ANY(${param_index})
+                    )
+                    """
+                )
+                params.append(filter_user_ids)
+                param_index += 1
+
+            if filter_document_ids:
+                conditions.append(
+                    f"""
+                    c.id IN (
+                        SELECT unnest(collection_ids)
+                        FROM {self.project_name}.documents
+                        WHERE id = ANY(${param_index})
+                    )
+                    """
+                )
+                params.append(filter_document_ids)
+                param_index += 1
+
+            if filter_collection_ids:
+                conditions.append(f"c.id = ANY(${param_index})")
+                params.append(filter_collection_ids)
+                param_index += 1
+
+            # Only get root collections (no parent)
+            conditions.append("c.parent_id IS NULL")
+
+            where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+            # First, get root collections with pagination
+            root_query = f"""
+                SELECT 
+                    c.*,
+                    COUNT(*) OVER() as total_entries
+                FROM {self.project_name}.collections c
+                {where_clause}
+                ORDER BY c.created_at DESC
+                OFFSET ${param_index}
+                LIMIT ${param_index + 1}
+            """
+            params.extend([offset, limit])
+
             root_results = await self.connection_manager.fetch_query(root_query, params)
 
             if not root_results:
@@ -536,8 +614,8 @@ class PostgresCollectionsHandler(Handler):
                     owner_id=row["owner_id"],
                     name=row["name"],
                     description=row["description"],
-                    theme=row["theme"],
-                    icon=row["icon"],
+                    theme=row.get("theme", "#a855f7"),
+                    icon=row.get("icon", "Book"),
                     graph_cluster_status=row["graph_cluster_status"],
                     graph_sync_status=row["graph_sync_status"],
                     created_at=row["created_at"],
@@ -555,7 +633,7 @@ class PostgresCollectionsHandler(Handler):
                         try:
                             sub_collection = await self.get_collection_by_id(sub_id, include_children=True)
                             subcollections.append(sub_collection)
-                        except HTTPException:
+                        except R2RException:
                             continue
                     collection.subcollection_details = subcollections
 
@@ -565,7 +643,7 @@ class PostgresCollectionsHandler(Handler):
         except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"An error occurred while fetching collections: {e}",
+                detail=f"An error occurred while fetching collections: {str(e)}",
             ) from e
 
     async def assign_document_to_collection_relational(

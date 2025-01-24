@@ -556,17 +556,27 @@ class ManagementService(Service):
         }
         return sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:5]
 
+    @telemetry_event("CollectionExists")
+    async def collection_exists(self, collection_id: UUID) -> bool:
+        return await self.providers.database.collections_handler.collection_exists(collection_id)
+
     @telemetry_event("CreateCollection")
     async def create_collection(
         self,
         owner_id: UUID,
         name: Optional[str] = None,
         description: str = "",
+        theme: Optional[str] = None,
+        icon: Optional[str] = None,
+        parent_id: Optional[UUID] = None,
     ) -> CollectionResponse:
         result = await self.providers.database.collections_handler.create_collection(
             owner_id=owner_id,
             name=name,
             description=description,
+            theme=theme,
+            icon=icon,
+            parent_id=parent_id,
         )
         graph_result = await self.providers.database.graphs_handler.create(
             collection_id=result.id,
@@ -581,6 +591,7 @@ class ManagementService(Service):
         collection_id: UUID,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        parent_id: Optional[UUID] = None,
         generate_description: bool = False,
     ) -> CollectionResponse:
         if generate_description:
@@ -591,6 +602,7 @@ class ManagementService(Service):
             collection_id=collection_id,
             name=name,
             description=description,
+            parent_id=parent_id,
         )
 
     @telemetry_event("DeleteCollection")
@@ -1103,3 +1115,8 @@ class ManagementService(Service):
             "usage": usage,
         }
         return result
+
+    @telemetry_event("GetCollectionById")
+    async def get_collection_by_id(self, collection_id: UUID) -> CollectionResponse:
+        """Get a collection by its ID."""
+        return await self.providers.database.collections_handler.get_collection_by_id(collection_id)

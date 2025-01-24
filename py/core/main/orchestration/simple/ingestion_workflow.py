@@ -113,46 +113,50 @@ def simple_ingestion_factory(service: IngestionService):
                 else:
                     for collection_id in collection_ids:
                         try:
-                            # FIXME: Right now we just throw a warning if the collection already exists, but we should probably handle this more gracefully
-                            name = "My Collection"
-                            description = f"A collection started during {document_info.title} ingestion"
+                            # Check if collection exists first
+                            collection_exists = await service.providers.database.collections_handler.collection_exists(collection_id)
+                            if not collection_exists:
+                                # Only create if it doesn't exist
+                                name = "My Collection"
+                                description = f"A collection started during {document_info.title} ingestion"
 
-                            await service.providers.database.collections_handler.create_collection(
-                                owner_id=document_info.owner_id,
-                                name=name,
-                                description=description,
+                                await service.providers.database.collections_handler.create_collection(
+                                    owner_id=document_info.owner_id,
+                                    name=name,
+                                    description=description,
+                                    collection_id=collection_id,
+                                )
+                                await service.providers.database.graphs_handler.create(
+                                    collection_id=collection_id,
+                                    name=name,
+                                    description=description,
+                                    graph_id=collection_id,
+                                )
+
+                            # Always try to assign the document to the collection
+                            await service.providers.database.collections_handler.assign_document_to_collection_relational(
+                                document_id=document_info.id,
                                 collection_id=collection_id,
                             )
-                            await service.providers.database.graphs_handler.create(
+
+                            await service.providers.database.chunks_handler.assign_document_chunks_to_collection(
+                                document_id=document_info.id,
                                 collection_id=collection_id,
-                                name=name,
-                                description=description,
-                                graph_id=collection_id,
+                            )
+                            await service.providers.database.documents_handler.set_workflow_status(
+                                id=collection_id,
+                                status_type="graph_sync_status",
+                                status=KGEnrichmentStatus.OUTDATED,
+                            )
+                            await service.providers.database.documents_handler.set_workflow_status(
+                                id=collection_id,
+                                status_type="graph_cluster_status",
+                                status=KGEnrichmentStatus.OUTDATED,  # NOTE - we should actually check that cluster has been made first, if not it should be PENDING still
                             )
                         except Exception as e:
-                            logger.warning(
-                                f"Warning, could not create collection with error: {str(e)}"
+                            logger.error(
+                                f"Error during assigning document to collection: {str(e)}"
                             )
-
-                        await service.providers.database.collections_handler.assign_document_to_collection_relational(
-                            document_id=document_info.id,
-                            collection_id=collection_id,
-                        )
-
-                        await service.providers.database.chunks_handler.assign_document_chunks_to_collection(
-                            document_id=document_info.id,
-                            collection_id=collection_id,
-                        )
-                        await service.providers.database.documents_handler.set_workflow_status(
-                            id=collection_id,
-                            status_type="graph_sync_status",
-                            status=KGEnrichmentStatus.OUTDATED,
-                        )
-                        await service.providers.database.documents_handler.set_workflow_status(
-                            id=collection_id,
-                            status_type="graph_cluster_status",
-                            status=KGEnrichmentStatus.OUTDATED,  # NOTE - we should actually check that cluster has been made first, if not it should be PENDING still
-                        )
             except Exception as e:
                 logger.error(
                     f"Error during assigning document to collection: {str(e)}"
@@ -392,42 +396,50 @@ def simple_ingestion_factory(service: IngestionService):
                 else:
                     for collection_id in collection_ids:
                         try:
-                            name = document_info.title or "N/A"
-                            description = ""
-                            result = await service.providers.database.collections_handler.create_collection(
-                                owner_id=document_info.owner_id,
-                                name=name,
-                                description=description,
+                            # Check if collection exists first
+                            collection_exists = await service.providers.database.collections_handler.collection_exists(collection_id)
+                            if not collection_exists:
+                                # Only create if it doesn't exist
+                                name = "My Collection"
+                                description = f"A collection started during {document_info.title} ingestion"
+
+                                await service.providers.database.collections_handler.create_collection(
+                                    owner_id=document_info.owner_id,
+                                    name=name,
+                                    description=description,
+                                    collection_id=collection_id,
+                                )
+                                await service.providers.database.graphs_handler.create(
+                                    collection_id=collection_id,
+                                    name=name,
+                                    description=description,
+                                    graph_id=collection_id,
+                                )
+
+                            # Always try to assign the document to the collection
+                            await service.providers.database.collections_handler.assign_document_to_collection_relational(
+                                document_id=document_info.id,
                                 collection_id=collection_id,
                             )
-                            await service.providers.database.graphs_handler.create(
+
+                            await service.providers.database.chunks_handler.assign_document_chunks_to_collection(
+                                document_id=document_info.id,
                                 collection_id=collection_id,
-                                name=name,
-                                description=description,
-                                graph_id=collection_id,
+                            )
+                            await service.providers.database.documents_handler.set_workflow_status(
+                                id=collection_id,
+                                status_type="graph_sync_status",
+                                status=KGEnrichmentStatus.OUTDATED,
+                            )
+                            await service.providers.database.documents_handler.set_workflow_status(
+                                id=collection_id,
+                                status_type="graph_cluster_status",
+                                status=KGEnrichmentStatus.OUTDATED,  # NOTE - we should actually check that cluster has been made first, if not it should be PENDING still
                             )
                         except Exception as e:
-                            logger.warning(
-                                f"Warning, could not create collection with error: {str(e)}"
+                            logger.error(
+                                f"Error during assigning document to collection: {str(e)}"
                             )
-                        await service.providers.database.collections_handler.assign_document_to_collection_relational(
-                            document_id=document_info.id,
-                            collection_id=collection_id,
-                        )
-                        await service.providers.database.chunks_handler.assign_document_chunks_to_collection(
-                            document_id=document_info.id,
-                            collection_id=collection_id,
-                        )
-                        await service.providers.database.documents_handler.set_workflow_status(
-                            id=collection_id,
-                            status_type="graph_sync_status",
-                            status=KGEnrichmentStatus.OUTDATED,
-                        )
-                        await service.providers.database.documents_handler.set_workflow_status(
-                            id=collection_id,
-                            status_type="graph_cluster_status",
-                            status=KGEnrichmentStatus.OUTDATED,  # NOTE - we should actually check that cluster has been made first, if not it should be PENDING still
-                        )
 
                     if service.providers.ingestion.config.automatic_extraction:
                         raise R2RException(

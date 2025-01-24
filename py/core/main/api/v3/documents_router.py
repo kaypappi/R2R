@@ -518,7 +518,7 @@ class DocumentsRouter(BaseRouterV3):
                     if collection_ids
                     else None
                 ),
-                "metadata": metadata,
+                "metadata": metadata or {},
                 "ingestion_config": effective_ingestion_config.model_dump(
                     mode="json"
                 ),

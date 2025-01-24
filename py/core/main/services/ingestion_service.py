@@ -69,7 +69,7 @@ class IngestionService(Service):
         size_in_bytes,
         metadata: Optional[dict] = None,
         version: Optional[str] = None,
-        # collection_ids: Optional[list[UUID]] = None,
+        collection_ids: Optional[list[UUID]] = None,
         *args: Any,
         **kwargs: Any,
     ) -> dict:
@@ -94,6 +94,7 @@ class IngestionService(Service):
                 metadata,
                 version,
                 size_in_bytes,
+                collection_ids,
             )
 
             existing_document_info = (
@@ -141,6 +142,7 @@ class IngestionService(Service):
         metadata: dict,
         version: str,
         size_in_bytes: int,
+        collection_ids: Optional[list[UUID]] = None,
     ) -> DocumentResponse:
         file_extension = (
             file_name.split(".")[-1].lower() if file_name != "N/A" else "txt"
@@ -157,7 +159,7 @@ class IngestionService(Service):
         return DocumentResponse(
             id=document_id,
             owner_id=user.id,
-            collection_ids=metadata.get("collection_ids", []),
+            collection_ids=collection_ids or [],
             document_type=DocumentType[file_extension.upper()],
             title=(
                 metadata.get("title", file_name.split("/")[-1])

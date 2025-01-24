@@ -83,10 +83,11 @@ provider = "bcrypt"
 
 [database]
 provider = "postgres"
-default_collection_name = "Default"
-default_collection_description = "Your default collection."
+default_collection_name = "Private"
+default_collection_description = "Your personal vault"
 default_main_subcollection_name="Class 1"
 default_main_subcollection_description="Your very first class"
+default_collection_theme = "blue"
 
 # Use an array of tables for default_subcollections
 [[database.default_subcollections]]
