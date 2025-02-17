@@ -652,15 +652,8 @@ class PostgresCollectionsHandler(Handler):
         collection_id: UUID,
     ) -> UUID:
         """
-        Assign a document to a collection.
-
-        Args:
-            document_id (UUID): The ID of the document to assign.
-            collection_id (UUID): The ID of the collection to assign the document to.
-
-        Raises:
-            R2RException: If the collection doesn't exist, if the document is not found,
-                        or if there's a database error.
+        Assign a document to a collection and update document counts for the collection
+        and all its parent collections.
         """
         try:
             if not await self.collection_exists(collection_id):
@@ -696,10 +689,24 @@ class PostgresCollectionsHandler(Handler):
                     message="Document is already assigned to the collection",
                 )
 
+            # Update document count for the collection and all its parent collections
             update_collection_query = f"""
-                UPDATE {self._get_table_name("collections")}
+                WITH RECURSIVE collection_hierarchy AS (
+                    -- Base case: start with the target collection
+                    SELECT id, parent_id
+                    FROM {self._get_table_name("collections")}
+                    WHERE id = $1
+                    
+                    UNION
+                    
+                    -- Recursive case: get all parent collections
+                    SELECT c.id, c.parent_id
+                    FROM {self._get_table_name("collections")} c
+                    INNER JOIN collection_hierarchy ch ON c.id = ch.parent_id
+                )
+                UPDATE {self._get_table_name("collections")} c
                 SET document_count = document_count + 1
-                WHERE id = $1
+                WHERE c.id IN (SELECT id FROM collection_hierarchy)
             """
             await self.connection_manager.execute_query(
                 query=update_collection_query, params=[collection_id]
@@ -720,14 +727,8 @@ class PostgresCollectionsHandler(Handler):
         self, document_id: UUID, collection_id: UUID
     ) -> None:
         """
-        Remove a document from a collection.
-
-        Args:
-            document_id (UUID): The ID of the document to remove.
-            collection_id (UUID): The ID of the collection to remove the document from.
-
-        Raises:
-            R2RException: If the collection doesn't exist or if the document is not in the collection.
+        Remove a document from a collection and update document counts for the collection
+        and all its parent collections.
         """
         if not await self.collection_exists(collection_id):
             raise R2RException(status_code=404, message="Collection not found")
@@ -748,8 +749,27 @@ class PostgresCollectionsHandler(Handler):
                 message="Document not found in the specified collection",
             )
 
-        await self.decrement_collection_document_count(
-            collection_id=collection_id
+        # Update document count for the collection and all its parent collections
+        update_collection_query = f"""
+            WITH RECURSIVE collection_hierarchy AS (
+                -- Base case: start with the target collection
+                SELECT id, parent_id
+                FROM {self._get_table_name("collections")}
+                WHERE id = $1
+                
+                UNION
+                
+                -- Recursive case: get all parent collections
+                SELECT c.id, c.parent_id
+                FROM {self._get_table_name("collections")} c
+                INNER JOIN collection_hierarchy ch ON c.id = ch.parent_id
+            )
+            UPDATE {self._get_table_name("collections")} c
+            SET document_count = document_count - 1
+            WHERE c.id IN (SELECT id FROM collection_hierarchy)
+        """
+        await self.connection_manager.execute_query(
+            query=update_collection_query, params=[collection_id]
         )
 
     async def decrement_collection_document_count(
