@@ -92,18 +92,21 @@ class ConversationsRouter(BaseRouterV3):
             name: Optional[str] = Body(
                 None, description="The name of the conversation", embed=True
             ),
+            collection_id: Optional[UUID] = Body(
+                None, description="The ID of the collection to associate with the conversation", embed=True
+            ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedConversationResponse:
             """
             Create a new conversation.
 
             This endpoint initializes a new conversation for the authenticated user.
+            Optionally, the conversation can be associated with a collection.
             """
-            user_id = auth_user.id
-
             return await self.services.management.create_conversation(
-                user_id=user_id,
+                user_id=auth_user.id,
                 name=name,
+                collection_id=collection_id,
             )
 
         @self.router.get(
@@ -170,6 +173,10 @@ class ConversationsRouter(BaseRouterV3):
                 [],
                 description="A list of conversation IDs to retrieve. If not provided, all conversations will be returned.",
             ),
+            collection_id: Optional[UUID] = Query(
+                None,
+                description="Filter conversations by collection ID.",
+            ),
             offset: int = Query(
                 0,
                 ge=0,
@@ -184,29 +191,21 @@ class ConversationsRouter(BaseRouterV3):
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedConversationsResponse:
             """
-            List conversations with pagination and sorting options.
+            List conversations with pagination and filtering options.
 
-            This endpoint returns a paginated list of conversations for the authenticated user.
+            This endpoint returns a list of conversations accessible to the authenticated user.
+            Results can be filtered by conversation IDs and/or collection ID, and paginated using offset and limit parameters.
             """
-            requesting_user_id = (
-                None if auth_user.is_superuser else [auth_user.id]
+            conversation_ids = [UUID(id) for id in ids] if ids else None
+            response = await self.services.management.conversations_overview(
+                offset=offset,
+                limit=limit,
+                user_ids=[auth_user.id],
+                conversation_ids=conversation_ids,
+                collection_id=collection_id,
             )
-
-            conversation_uuids = [
-                UUID(conversation_id) for conversation_id in ids
-            ]
-
-            conversations_response = (
-                await self.services.management.conversations_overview(
-                    offset=offset,
-                    limit=limit,
-                    conversation_ids=conversation_uuids,
-                    user_ids=requesting_user_id,
-                )
-            )
-            return conversations_response["results"], {  # type: ignore
-                "total_entries": conversations_response["total_entries"]
-            }
+            
+            return response["results"], {"total_entries": response["total_entries"]}
 
         @self.router.post(
             "/conversations/export",
@@ -565,11 +564,16 @@ class ConversationsRouter(BaseRouterV3):
         async def update_conversation(
             id: UUID = Path(
                 ...,
-                description="The unique identifier of the conversation to delete",
+                description="The unique identifier of the conversation to update",
             ),
             name: str = Body(
                 ...,
                 description="The updated name for the conversation",
+                embed=True,
+            ),
+            collection_id: Optional[UUID] = Body(
+                None,
+                description="The ID of the collection to associate with the conversation",
                 embed=True,
             ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
@@ -577,11 +581,12 @@ class ConversationsRouter(BaseRouterV3):
             """
             Update an existing conversation.
 
-            This endpoint updates the name of an existing conversation identified by its UUID.
+            This endpoint updates the name and collection association of an existing conversation identified by its UUID.
             """
             return await self.services.management.update_conversation(
                 conversation_id=id,
                 name=name,
+                collection_id=collection_id,
             )
 
         @self.router.delete(

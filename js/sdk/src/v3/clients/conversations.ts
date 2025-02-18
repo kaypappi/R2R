@@ -6,6 +6,7 @@ import {
   WrappedConversationResponse,
   WrappedConversationsResponse,
   WrappedMessageResponse,
+  ConversationType,
 } from "../../types";
 import { downloadBlob } from "../../utils";
 
@@ -21,14 +22,20 @@ export class ConversationsClient {
   /**
    * Create a new conversation.
    * @param name The name of the conversation
+   * @param collectionId The ID of the collection to associate with the conversation
+   * @param type The type of conversation
    * @returns The created conversation
    */
   @feature("conversations.create")
   async create(options?: {
     name?: string;
+    collectionId?: string;
+    type?: ConversationType;
   }): Promise<WrappedConversationResponse> {
     const data: Record<string, any> = {
       ...(options?.name && { name: options?.name }),
+      ...(options?.collectionId && { collection_id: options?.collectionId }),
+      ...(options?.type && { type: options?.type }),
     };
 
     return this.client.makeRequest("POST", "conversations", {
@@ -37,26 +44,26 @@ export class ConversationsClient {
   }
 
   /**
-   * List conversations with pagination and sorting options.
+   * List conversations with pagination and filtering options.
    * @param ids List of conversation IDs to retrieve
-   * @param offset Specifies the number of objects to skip. Defaults to 0.
-   * @param limit Specifies a limit on the number of objects to return, ranging between 1 and 100. Defaults to 100.
-   * @returns A list of conversations
+   * @param collectionId Filter conversations by collection ID
+   * @param offset Number of conversations to skip
+   * @param limit Number of conversations to return
+   * @returns List of conversations and pagination information
    */
   @feature("conversations.list")
   async list(options?: {
     ids?: string[];
+    collectionId?: string;
     offset?: number;
     limit?: number;
   }): Promise<WrappedConversationsResponse> {
     const params: Record<string, any> = {
-      offset: options?.offset ?? 0,
-      limit: options?.limit ?? 100,
+      ...(options?.offset !== undefined && { offset: options.offset }),
+      ...(options?.limit !== undefined && { limit: options.limit }),
+      ...(options?.ids && { ids: options.ids }),
+      ...(options?.collectionId && { collection_id: options.collectionId }),
     };
-
-    if (options?.ids && options.ids.length > 0) {
-      params.ids = options.ids;
-    }
 
     return this.client.makeRequest("GET", "conversations", {
       params,
@@ -79,15 +86,21 @@ export class ConversationsClient {
    * Update an existing conversation.
    * @param id The ID of the conversation to update
    * @param name The new name of the conversation
+   * @param collectionId The ID of the collection to associate with the conversation
+   * @param type The type of conversation
    * @returns The updated conversation
    */
   @feature("conversations.update")
   async update(options: {
     id: string;
     name: string;
+    collectionId?: string;
+    type?: ConversationType;
   }): Promise<WrappedConversationResponse> {
     const data: Record<string, any> = {
       name: options.name,
+      ...(options.collectionId && { collection_id: options.collectionId }),
+      ...(options.type && { type: options.type }),
     };
 
     return this.client.makeRequest("POST", `conversations/${options.id}`, {

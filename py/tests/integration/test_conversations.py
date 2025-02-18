@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 from r2r import R2RClient, R2RException
+from shared.api.models.management.responses import ConversationType
 
 
 @pytest.fixture
@@ -22,8 +23,28 @@ def test_create_conversation(client):
     resp = client.conversations.create()["results"]
     conv_id = resp["id"]
     assert conv_id is not None, "No conversation_id returned"
+    assert resp["collection_id"] is None, "collection_id should be None by default"
     # Cleanup
     client.conversations.delete(id=conv_id)
+
+
+def test_create_conversation_with_collection(client):
+    # First create a collection
+    collection_resp = client.collections.create(name="Test Collection")["results"]
+    collection_id = collection_resp["id"]
+
+    # Create conversation with collection
+    resp = client.conversations.create(
+        name="Test Conversation",
+        collection_id=collection_id
+    )["results"]
+    conv_id = resp["id"]
+    assert conv_id is not None, "No conversation_id returned"
+    assert resp["collection_id"] == collection_id, "collection_id mismatch"
+
+    # Cleanup
+    client.conversations.delete(id=conv_id)
+    client.collections.delete(id=collection_id)
 
 
 def test_list_conversations(client, test_conversation):
@@ -235,3 +256,131 @@ def test_update_message_with_additional_metadata(client, test_conversation):
     assert (
         updated_message["message"]["content"] == "Updated content"
     ), "Message content not updated"
+
+
+def test_list_conversations_by_collection(client):
+    # First create a collection
+    collection_resp = client.collections.create(name="Test Collection")["results"]
+    collection_id = collection_resp["id"]
+
+    # Create conversations with and without collection
+    conv1 = client.conversations.create(
+        name="Conv 1",
+        collection_id=collection_id
+    )["results"]
+    conv2 = client.conversations.create(name="Conv 2")["results"]
+    conv3 = client.conversations.create(
+        name="Conv 3",
+        collection_id=collection_id
+    )["results"]
+
+    # List conversations by collection
+    resp = client.conversations.list(collection_id=collection_id)["results"]
+    assert len(resp) == 2, "Should return only conversations in collection"
+    conv_ids = [c["id"] for c in resp]
+    assert conv1["id"] in conv_ids, "First conversation should be in results"
+    assert conv2["id"] not in conv_ids, "Second conversation should not be in results"
+    assert conv3["id"] in conv_ids, "Third conversation should be in results"
+
+    # Cleanup
+    client.conversations.delete(id=conv1["id"])
+    client.conversations.delete(id=conv2["id"])
+    client.conversations.delete(id=conv3["id"])
+    client.collections.delete(id=collection_id)
+
+
+def test_update_conversation_collection(client):
+    # Create two collections
+    collection1 = client.collections.create(name="Collection 1")["results"]
+    collection2 = client.collections.create(name="Collection 2")["results"]
+
+    # Create conversation in first collection
+    conv = client.conversations.create(
+        name="Test Conv",
+        collection_id=collection1["id"]
+    )["results"]
+    assert conv["collection_id"] == collection1["id"]
+
+    # Update conversation to second collection
+    updated = client.conversations.update(
+        id=conv["id"],
+        name="Updated Conv",
+        collection_id=collection2["id"]
+    )["results"]
+    assert updated["collection_id"] == collection2["id"]
+
+    # Remove collection association
+    updated = client.conversations.update(
+        id=conv["id"],
+        name="Updated Conv",
+        collection_id=None
+    )["results"]
+    assert updated["collection_id"] is None
+
+    # Cleanup
+    client.conversations.delete(id=conv["id"])
+    client.collections.delete(id=collection1["id"])
+    client.collections.delete(id=collection2["id"])
+
+
+def test_create_conversation_with_type(client):
+    # Create conversation with specific type
+    resp = client.conversations.create(
+        name="Test Flashcards",
+        type=ConversationType.FLASHCARDS
+    )["results"]
+    conv_id = resp["id"]
+    assert conv_id is not None, "No conversation_id returned"
+    assert resp["type"] == ConversationType.FLASHCARDS, "type mismatch"
+
+    # Cleanup
+    client.conversations.delete(id=conv_id)
+
+
+def test_create_conversation_default_type(client):
+    # Create conversation without specifying type
+    resp = client.conversations.create(name="Test Chat")["results"]
+    conv_id = resp["id"]
+    assert conv_id is not None, "No conversation_id returned"
+    assert resp["type"] == ConversationType.CHAT, "Default type should be Chat"
+
+    # Cleanup
+    client.conversations.delete(id=conv_id)
+
+
+def test_update_conversation_type(client):
+    # Create conversation with default type
+    conv = client.conversations.create(name="Test Conv")["results"]
+    assert conv["type"] == ConversationType.CHAT, "Default type should be Chat"
+
+    # Update to Study Guide type
+    updated = client.conversations.update(
+        id=conv["id"],
+        name="Study Guide Conv",
+        type=ConversationType.STUDY_GUIDE
+    )["results"]
+    assert updated["type"] == ConversationType.STUDY_GUIDE, "Type not updated correctly"
+
+    # Cleanup
+    client.conversations.delete(id=conv["id"])
+
+
+def test_create_conversation_with_type_and_collection(client):
+    # Create a collection
+    collection_resp = client.collections.create(name="Test Collection")["results"]
+    collection_id = collection_resp["id"]
+
+    # Create conversation with type and collection
+    resp = client.conversations.create(
+        name="Test Quiz",
+        type=ConversationType.PRACTICE_QUIZ,
+        collection_id=collection_id
+    )["results"]
+    conv_id = resp["id"]
+    assert conv_id is not None, "No conversation_id returned"
+    assert resp["type"] == ConversationType.PRACTICE_QUIZ, "type mismatch"
+    assert resp["collection_id"] == collection_id, "collection_id mismatch"
+
+    # Cleanup
+    client.conversations.delete(id=conv_id)
+    client.collections.delete(id=collection_id)

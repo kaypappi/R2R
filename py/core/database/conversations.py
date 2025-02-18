@@ -10,6 +10,7 @@ from core.base import Handler, Message, R2RException
 from shared.api.models.management.responses import (
     ConversationResponse,
     MessageResponse,
+    ConversationType,
 )
 
 from .base import PostgresConnectionManager
@@ -22,13 +23,49 @@ class PostgresConversationsHandler(Handler):
         self.project_name = project_name
         self.connection_manager = connection_manager
 
+    async def migrate_tables(self):
+        """Add new columns to the conversations table if they don't exist."""
+        # Check if collection_id column exists
+        check_collection_id_query = f"""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = '{self._get_table_name("conversations").split(".")[-1]}'
+        AND column_name = 'collection_id';
+        """
+        collection_id_exists = await self.connection_manager.fetchrow_query(check_collection_id_query)
+        
+        if not collection_id_exists:
+            add_collection_id_query = f"""
+            ALTER TABLE {self._get_table_name("conversations")}
+            ADD COLUMN collection_id UUID REFERENCES {self._get_table_name("collections")}(id);
+            """
+            await self.connection_manager.execute_query(add_collection_id_query)
+
+        # Check if type column exists
+        check_type_query = f"""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = '{self._get_table_name("conversations").split(".")[-1]}'
+        AND column_name = 'type';
+        """
+        type_exists = await self.connection_manager.fetchrow_query(check_type_query)
+        
+        if not type_exists:
+            add_type_query = f"""
+            ALTER TABLE {self._get_table_name("conversations")}
+            ADD COLUMN type TEXT DEFAULT 'Chat';
+            """
+            await self.connection_manager.execute_query(add_type_query)
+
     async def create_tables(self):
         create_conversations_query = f"""
         CREATE TABLE IF NOT EXISTS {self._get_table_name("conversations")} (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             user_id UUID,
             created_at TIMESTAMPTZ DEFAULT NOW(),
-            name TEXT
+            name TEXT,
+            collection_id UUID REFERENCES {self._get_table_name("collections")}(id),
+            type TEXT DEFAULT 'Chat'
         );
         """
 
@@ -46,20 +83,23 @@ class PostgresConversationsHandler(Handler):
         """
         await self.connection_manager.execute_query(create_conversations_query)
         await self.connection_manager.execute_query(create_messages_query)
+        await self.migrate_tables()
 
     async def create_conversation(
         self,
         user_id: Optional[UUID] = None,
         name: Optional[str] = None,
+        collection_id: Optional[UUID] = None,
+        type: ConversationType = ConversationType.CHAT,
     ) -> ConversationResponse:
         query = f"""
-            INSERT INTO {self._get_table_name("conversations")} (user_id, name)
-            VALUES ($1, $2)
-            RETURNING id, extract(epoch from created_at) as created_at_epoch
+            INSERT INTO {self._get_table_name("conversations")} (user_id, name, collection_id, type)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, extract(epoch from created_at) as created_at_epoch, collection_id, type
         """
         try:
             result = await self.connection_manager.fetchrow_query(
-                query, [user_id, name]
+                query, [user_id, name, collection_id, type.value]
             )
 
             return ConversationResponse(
@@ -67,6 +107,8 @@ class PostgresConversationsHandler(Handler):
                 created_at=result["created_at_epoch"],
                 user_id=user_id or None,
                 name=name or None,
+                collection_id=result["collection_id"] or None,
+                type=ConversationType(result["type"]),
             )
         except Exception as e:
             raise HTTPException(
@@ -80,6 +122,7 @@ class PostgresConversationsHandler(Handler):
         limit: int,
         filter_user_ids: Optional[list[UUID]] = None,
         conversation_ids: Optional[list[UUID]] = None,
+        collection_id: Optional[UUID] = None,
     ) -> dict[str, Any]:
         conditions = []
         params: list = []
@@ -103,6 +146,11 @@ class PostgresConversationsHandler(Handler):
             params.append(conversation_ids)
             param_index += 1
 
+        if collection_id:
+            conditions.append(f"c.collection_id = ${param_index}")
+            params.append(collection_id)
+            param_index += 1
+
         where_clause = (
             "WHERE " + " AND ".join(conditions) if conditions else ""
         )
@@ -112,7 +160,9 @@ class PostgresConversationsHandler(Handler):
                 SELECT c.id,
                     extract(epoch from c.created_at) as created_at_epoch,
                     c.user_id,
-                    c.name
+                    c.name,
+                    c.collection_id,
+                    c.type
                 FROM {self._get_table_name("conversations")} c
                 {where_clause}
             ),
@@ -144,6 +194,8 @@ class PostgresConversationsHandler(Handler):
                 "created_at": row["created_at_epoch"],
                 "user_id": str(row["user_id"]) if row["user_id"] else None,
                 "name": row["name"] or None,
+                "collection_id": str(row["collection_id"]) if row["collection_id"] else None,
+                "type": ConversationType(row["type"]),
             }
             for row in results
         ]
@@ -374,7 +426,7 @@ class PostgresConversationsHandler(Handler):
         ]
 
     async def update_conversation(
-        self, conversation_id: UUID, name: str
+        self, conversation_id: UUID, name: str, collection_id: Optional[UUID] = None, type: Optional[ConversationType] = None,
     ) -> ConversationResponse:
         try:
             # Check if conversation exists
@@ -390,17 +442,19 @@ class PostgresConversationsHandler(Handler):
 
             update_query = f"""
             UPDATE {self._get_table_name('conversations')}
-            SET name = $1 WHERE id = $2
-            RETURNING user_id, extract(epoch from created_at) as created_at_epoch
+            SET name = $1, collection_id = $2, type = $3 WHERE id = $4
+            RETURNING user_id, extract(epoch from created_at) as created_at_epoch, collection_id, type
             """
             updated_row = await self.connection_manager.fetchrow_query(
-                update_query, [name, conversation_id]
+                update_query, [name, collection_id, type.value if type else ConversationType.CHAT.value, conversation_id]
             )
             return ConversationResponse(
                 id=conversation_id,
                 created_at=updated_row["created_at_epoch"],
                 user_id=updated_row["user_id"] or None,
                 name=name,
+                collection_id=updated_row["collection_id"] or None,
+                type=ConversationType(updated_row["type"]),
             )
         except Exception as e:
             raise HTTPException(

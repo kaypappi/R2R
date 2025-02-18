@@ -804,10 +804,21 @@ class ManagementService(Service):
         self,
         user_id: Optional[UUID] = None,
         name: Optional[str] = None,
+        collection_id: Optional[UUID] = None,
     ) -> ConversationResponse:
+        if collection_id:
+            # Verify collection exists and user has access
+            collection_exists = await self.collection_exists(collection_id)
+            if not collection_exists:
+                raise R2RException(
+                    status_code=404,
+                    message=f"Collection {collection_id} not found.",
+                )
+
         return await self.providers.database.conversations_handler.create_conversation(
             user_id=user_id,
             name=name,
+            collection_id=collection_id,
         )
 
     @telemetry_event("ConversationsOverview")
@@ -817,12 +828,23 @@ class ManagementService(Service):
         limit: int,
         conversation_ids: Optional[list[UUID]] = None,
         user_ids: Optional[list[UUID]] = None,
+        collection_id: Optional[UUID] = None,
     ) -> dict[str, list[dict] | int]:
+        if collection_id:
+            # Verify collection exists
+            collection_exists = await self.collection_exists(collection_id)
+            if not collection_exists:
+                raise R2RException(
+                    status_code=404,
+                    message=f"Collection {collection_id} not found.",
+                )
+
         return await self.providers.database.conversations_handler.get_conversations_overview(
             offset=offset,
             limit=limit,
             filter_user_ids=user_ids,
             conversation_ids=conversation_ids,
+            collection_id=collection_id,
         )
 
     @telemetry_event("AddMessage")
@@ -857,10 +879,21 @@ class ManagementService(Service):
 
     @telemetry_event("UpdateConversation")
     async def update_conversation(
-        self, conversation_id: UUID, name: str
+        self, conversation_id: UUID, name: str, collection_id: Optional[UUID] = None,
     ) -> ConversationResponse:
+        if collection_id:
+            # Verify collection exists
+            collection_exists = await self.collection_exists(collection_id)
+            if not collection_exists:
+                raise R2RException(
+                    status_code=404,
+                    message=f"Collection {collection_id} not found.",
+                )
+
         return await self.providers.database.conversations_handler.update_conversation(
-            conversation_id=conversation_id, name=name
+            conversation_id=conversation_id,
+            name=name,
+            collection_id=collection_id,
         )
 
     @telemetry_event("DeleteConversation")
