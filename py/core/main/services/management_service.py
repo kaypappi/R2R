@@ -25,6 +25,7 @@ from core.telemetry.telemetry_decorator import telemetry_event
 from ..abstractions import R2RAgents, R2RPipelines, R2RPipes, R2RProviders
 from ..config import R2RConfig
 from .base import Service
+from shared.api.models.management.responses import ConversationType
 
 logger = logging.getLogger()
 
@@ -805,6 +806,7 @@ class ManagementService(Service):
         user_id: Optional[UUID] = None,
         name: Optional[str] = None,
         collection_id: Optional[UUID] = None,
+        type: Optional[ConversationType] = None,
     ) -> ConversationResponse:
         if collection_id:
             # Verify collection exists and user has access
@@ -819,6 +821,7 @@ class ManagementService(Service):
             user_id=user_id,
             name=name,
             collection_id=collection_id,
+            type=type or ConversationType.CHAT,
         )
 
     @telemetry_event("ConversationsOverview")
@@ -879,7 +882,7 @@ class ManagementService(Service):
 
     @telemetry_event("UpdateConversation")
     async def update_conversation(
-        self, conversation_id: UUID, name: str, collection_id: Optional[UUID] = None,
+        self, conversation_id: UUID, name: str, collection_id: Optional[UUID] = None, type: Optional[ConversationType] = None,
     ) -> ConversationResponse:
         if collection_id:
             # Verify collection exists
@@ -894,6 +897,7 @@ class ManagementService(Service):
             conversation_id=conversation_id,
             name=name,
             collection_id=collection_id,
+            type=type,
         )
 
     @telemetry_event("DeleteConversation")

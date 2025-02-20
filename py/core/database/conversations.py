@@ -430,7 +430,7 @@ class PostgresConversationsHandler(Handler):
     ) -> ConversationResponse:
         try:
             # Check if conversation exists
-            conv_query = f"SELECT 1 FROM {self._get_table_name('conversations')} WHERE id = $1"
+            conv_query = f"SELECT user_id, extract(epoch from created_at) as created_at_epoch, collection_id, type FROM {self._get_table_name('conversations')} WHERE id = $1"
             conv_row = await self.connection_manager.fetchrow_query(
                 conv_query, [conversation_id]
             )
@@ -440,13 +440,30 @@ class PostgresConversationsHandler(Handler):
                     message=f"Conversation {conversation_id} not found.",
                 )
 
+            # Build update query dynamically based on provided fields
+            update_parts = ["name = $1"]
+            params = [name, conversation_id]  # $1 = name, $2 = conversation_id
+            param_idx = 3
+
+            if collection_id is not None:
+                update_parts.append(f"collection_id = ${param_idx}")
+                params.append(collection_id)
+                param_idx += 1
+
+            if type is not None:
+                update_parts.append(f"type = ${param_idx}")
+                params.append(type.value)
+                param_idx += 1
+
             update_query = f"""
             UPDATE {self._get_table_name('conversations')}
-            SET name = $1, collection_id = $2, type = $3 WHERE id = $4
+            SET {', '.join(update_parts)} 
+            WHERE id = $2
             RETURNING user_id, extract(epoch from created_at) as created_at_epoch, collection_id, type
             """
+            
             updated_row = await self.connection_manager.fetchrow_query(
-                update_query, [name, collection_id, type.value if type else ConversationType.CHAT.value, conversation_id]
+                update_query, params
             )
             return ConversationResponse(
                 id=conversation_id,
