@@ -3,6 +3,7 @@ from .base_utils import (
     _get_vector_column_str,
     decrement_version,
     deep_update,
+    extract_citations,
     format_search_results_for_llm,
     format_search_results_for_stream,
     generate_default_prompt_id,
@@ -13,8 +14,8 @@ from .base_utils import (
     generate_id,
     generate_user_id,
     increment_version,
-    run_pipeline,
-    to_async_generator,
+    map_citations_to_collector,
+    reassign_citations_in_order,
     validate_uuid,
 )
 from .splitter.text import RecursiveCharacterTextSplitter, TextSplitter
@@ -30,11 +31,12 @@ __all__ = [
     "generate_user_id",
     "generate_default_prompt_id",
     "generate_entity_document_id",
+    "map_citations_to_collector",
+    "extract_citations",
+    "reassign_citations_in_order",
     # Other
     "increment_version",
     "decrement_version",
-    "run_pipeline",
-    "to_async_generator",
     "validate_uuid",
     "deep_update",
     # Text splitter

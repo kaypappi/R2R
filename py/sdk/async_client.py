@@ -6,8 +6,7 @@ import httpx
 
 from shared.abstractions import R2RException
 
-from .base.base_client import BaseClient
-from .v3 import (
+from .asnyc_methods import (
     ChunksSDK,
     CollectionsSDK,
     ConversationsSDK,
@@ -19,21 +18,19 @@ from .v3 import (
     SystemSDK,
     UsersSDK,
 )
+from .base.base_client import BaseClient
 
 
 class R2RAsyncClient(BaseClient):
-    """
-    Asynchronous client for interacting with the R2R API.
-    """
+    """Asynchronous client for interacting with the R2R API."""
 
     def __init__(
         self,
-        base_url: str = "https://api.cloud.sciphi.ai",
-        prefix: str = "/v3",
-        custom_client=None,
+        base_url: str | None = None,
         timeout: float = 300.0,
+        custom_client=None,
     ):
-        super().__init__(base_url, prefix, timeout)
+        super().__init__(base_url, timeout)
         self.client = custom_client or httpx.AsyncClient(timeout=timeout)
         self.chunks = ChunksSDK(self)
         self.collections = CollectionsSDK(self)
@@ -53,24 +50,23 @@ class R2RAsyncClient(BaseClient):
         if (
             "https://api.cloud.sciphi.ai" in url
             and ("login" not in endpoint)
+            and ("create" not in endpoint)
+            and ("users" not in endpoint)
             and ("health" not in endpoint)
+            and (not self.access_token and not self.api_key)
         ):
-            if not self.access_token and not self.api_key:
-                raise R2RException(
-                    status_code=401,
-                    message="Access token or api key is required to access `https://api.cloud.sciphi.ai`. To change the base url, use `set_base_url` method. For instance, if using the CLI then execute `r2r set-api-base http://localhost:7272`, or set the local environment variable `R2R_API_BASE` to `http://localhost:7272`.",
-                )
+            raise R2RException(
+                status_code=401,
+                message="Access token or api key is required to access `https://api.cloud.sciphi.ai`. To change the base url, use `set_base_url` method or set the local environment variable `R2R_API_BASE` to `http://localhost:7272`.",
+            )
         request_args = self._prepare_request_args(endpoint, **kwargs)
 
         try:
             response = await self.client.request(method, url, **request_args)
             await self._handle_response(response)
-            # return response.json() if response.content else None
-            # In async_client.py, inside _make_request:
             if "application/json" in response.headers.get("Content-Type", ""):
                 return response.json() if response.content else None
             else:
-                # Return raw binary content as BytesIO
                 return BytesIO(response.content)
 
         except httpx.RequestError as e:
@@ -92,7 +88,7 @@ class R2RAsyncClient(BaseClient):
                     if line.strip():  # Ignore empty lines
                         try:
                             yield json.loads(line)
-                        except:  #  json.JSONDecodeError:
+                        except Exception:
                             yield line
 
     async def _handle_response(self, response):
@@ -111,6 +107,8 @@ class R2RAsyncClient(BaseClient):
                     message = str(error_content)
             except json.JSONDecodeError:
                 message = response.text
+            except Exception as e:
+                message = str(e)
 
             raise R2RException(
                 status_code=response.status_code, message=message

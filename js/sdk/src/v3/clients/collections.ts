@@ -1,4 +1,3 @@
-import { feature } from "../../feature";
 import { r2rClient } from "../../r2rClient";
 import {
   WrappedBooleanResponse,
@@ -12,9 +11,7 @@ import { downloadBlob } from "../../utils";
 
 let fs: any;
 if (typeof window === "undefined") {
-  import("fs").then((module) => {
-    fs = module;
-  });
+  fs = require("fs");
 }
 
 export class CollectionsClient {
@@ -26,7 +23,6 @@ export class CollectionsClient {
    * @param description Optional description of the collection
    * @returns A promise that resolves with the created collection
    */
-  @feature("collections.create")
   async create(options: {
     name: string;
     description?: string;
@@ -78,7 +74,6 @@ export class CollectionsClient {
    * @param limit Optional limit for pagination
    * @returns
    */
-  @feature("collections.list")
   async list(options?: {
     ids?: string[];
     offset?: number;
@@ -103,7 +98,6 @@ export class CollectionsClient {
    * @param id Collection ID to retrieve
    * @returns
    */
-  @feature("collections.retrieve")
   async retrieve(options: { id: string }): Promise<WrappedCollectionResponse> {
     return this.client.makeRequest("GET", `collections/${options.id}`);
   }
@@ -116,7 +110,6 @@ export class CollectionsClient {
    * @param generateDescription Whether to generate a new synthetic description for the collection
    * @returns
    */
-  @feature("collections.update")
   async update(options: {
     id: string;
     name?: string;
@@ -141,7 +134,6 @@ export class CollectionsClient {
    * @param id Collection ID to delete
    * @returns
    */
-  @feature("collections.delete")
   async delete(options: { id: string }): Promise<WrappedBooleanResponse> {
     return this.client.makeRequest("DELETE", `collections/${options.id}`);
   }
@@ -153,7 +145,6 @@ export class CollectionsClient {
    * @param limit Specifies a limit on the number of objects to return, ranging between 1 and 100. Defaults to 100.
    * @returns
    */
-  @feature("collections.listDocuments")
   async listDocuments(options: {
     id: string;
     offset?: number;
@@ -179,7 +170,6 @@ export class CollectionsClient {
    * @param documentId Document ID to add
    * @returns
    */
-  @feature("collections.addDocument")
   async addDocument(options: {
     id: string;
     documentId: string;
@@ -196,7 +186,6 @@ export class CollectionsClient {
    * @param documentId Document ID to remove
    * @returns
    */
-  @feature("collections.removeDocument")
   async removeDocument(options: {
     id: string;
     documentId: string;
@@ -214,7 +203,6 @@ export class CollectionsClient {
    * @param limit Specifies a limit on the number of objects to return, ranging between 1 and 100. Defaults to 100.
    * @returns
    */
-  @feature("collections.listUsers")
   async listUsers(options: {
     id: string;
     offset?: number;
@@ -236,7 +224,6 @@ export class CollectionsClient {
    * @param userId User ID to add
    * @returns
    */
-  @feature("collections.addUser")
   async addUser(options: {
     id: string;
     userId: string;
@@ -253,7 +240,6 @@ export class CollectionsClient {
    * @param userId User ID to remove
    * @returns
    */
-  @feature("collections.removeUser")
   async removeUser(options: {
     id: string;
     userId: string;
@@ -285,7 +271,6 @@ export class CollectionsClient {
    * @param collectionId The collection ID corresponding to the graph
    * @returns
    */
-  @feature("collections.extract")
   async extract(options: {
     collectionId: string;
     settings?: Record<string, any>;
@@ -317,7 +302,6 @@ export class CollectionsClient {
    * @param options.includeHeader Whether to include column headers (default: true)
    * @returns Promise<Blob> in browser environments, Promise<void> in Node.js
    */
-  @feature("collections.export")
   async export(
     options: {
       outputPath?: string;
@@ -362,7 +346,6 @@ export class CollectionsClient {
    * @param filename
    * @param options
    */
-  @feature("collections.exportToFile")
   async exportToFile(options: {
     filename: string;
     columns?: string[];
@@ -373,5 +356,18 @@ export class CollectionsClient {
     if (blob instanceof Blob) {
       downloadBlob(blob, options.filename);
     }
+  }
+
+  /**
+   * Retrieve a collection by its name.
+   * @param name The name of the collection to retrieve.
+   * @returns A promise that resolves with the collection details.
+   */
+  async retrieveByName(options: { name: string; ownerId?: string }): Promise<WrappedCollectionResponse> {
+    const queryParams: Record<string, any> = {};
+    if (options.ownerId) {
+      queryParams.owner_id = options.ownerId;
+    }
+    return this.client.makeRequest("GET", `collections/name/${options.name}`, { params: queryParams });
   }
 }

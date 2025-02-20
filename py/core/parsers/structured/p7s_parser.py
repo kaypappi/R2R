@@ -6,6 +6,10 @@ from datetime import datetime
 from email.message import Message
 from typing import AsyncGenerator
 
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import pkcs7
+from cryptography.x509.oid import NameOID
+
 from core.base.parsers.base_parser import AsyncParser
 from core.base.providers import (
     CompletionProvider,
@@ -28,20 +32,9 @@ class P7SParser(AsyncParser[str | bytes]):
         self.database_provider = database_provider
         self.llm_provider = llm_provider
         self.config = config
-
-        try:
-            from cryptography import x509
-            from cryptography.hazmat.primitives.serialization import pkcs7
-            from cryptography.x509.oid import NameOID
-
-            self.x509 = x509
-            self.pkcs7 = pkcs7
-            self.NameOID = NameOID
-        except ImportError:
-            raise ImportError(
-                "Error: 'cryptography' is required to run P7SParser. "
-                "Please install it using pip: pip install cryptography"
-            )
+        self.x509 = x509
+        self.pkcs7 = pkcs7
+        self.NameOID = NameOID
 
     def _format_datetime(self, dt: datetime) -> str:
         """Format datetime in a readable way."""
@@ -132,7 +125,7 @@ class P7SParser(AsyncParser[str | bytes]):
                     except Exception as e:
                         raise ValueError(
                             f"Failed to decode base64 PKCS#7 signature: {str(e)}"
-                        )
+                        ) from e
             # If we reach here, no PKCS#7 part was found
             raise ValueError(
                 "No application/x-pkcs7-signature part found in the MIME message."
@@ -151,7 +144,8 @@ class P7SParser(AsyncParser[str | bytes]):
     async def ingest(
         self, data: str | bytes, **kwargs
     ) -> AsyncGenerator[str, None]:
-        """Ingest an S/MIME message and extract the PKCS#7 signature information."""
+        """Ingest an S/MIME message and extract the PKCS#7 signature
+        information."""
         # If data is a string, it might be base64 encoded, or it might be the raw MIME text.
         # We should assume it's raw MIME text here because the input includes MIME headers.
         if isinstance(data, str):
@@ -181,4 +175,4 @@ class P7SParser(AsyncParser[str | bytes]):
                     yield f"Certificate {i}: No detailed information extracted."
 
         except Exception as e:
-            raise ValueError(f"Error processing P7S file: {str(e)}")
+            raise ValueError(f"Error processing P7S file: {str(e)}") from e

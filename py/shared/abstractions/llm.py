@@ -12,7 +12,6 @@ from .base import R2RSerializable
 if TYPE_CHECKING:
     from .search import AggregateSearchResult
 
-
 LLMChatCompletion = ChatCompletion
 LLMChatCompletionChunk = ChatCompletionChunk
 
@@ -32,7 +31,7 @@ class RAGCompletion:
 
 class GenerationConfig(R2RSerializable):
     _defaults: ClassVar[dict] = {
-        "model": "openai/gpt-4o",
+        "model": None,
         "temperature": 0.1,
         "top_p": 1.0,
         "max_tokens_to_sample": 1024,
@@ -44,7 +43,7 @@ class GenerationConfig(R2RSerializable):
         "response_format": None,
     }
 
-    model: str = Field(
+    model: Optional[str] = Field(
         default_factory=lambda: GenerationConfig._defaults["model"]
     )
     temperature: float = Field(
@@ -114,15 +113,17 @@ class GenerationConfig(R2RSerializable):
     class Config:
         populate_by_name = True
         json_schema_extra = {
-            "model": "openai/gpt-4o",
-            "temperature": 0.1,
-            "top_p": 1.0,
-            "max_tokens_to_sample": 1024,
-            "stream": False,
-            "functions": None,
-            "tools": None,
-            "add_generation_kwargs": None,
-            "api_base": None,
+            "example": {
+                "model": "openai/gpt-4o",
+                "temperature": 0.1,
+                "top_p": 1.0,
+                "max_tokens_to_sample": 1024,
+                "stream": False,
+                "functions": None,
+                "tools": None,
+                "add_generation_kwargs": None,
+                "api_base": None,
+            }
         }
 
 
@@ -139,18 +140,21 @@ class MessageType(Enum):
 
 class Message(R2RSerializable):
     role: MessageType | str
-    content: Optional[str] = None
+    content: Optional[Any] = None
     name: Optional[str] = None
     function_call: Optional[dict[str, Any]] = None
     tool_calls: Optional[list[dict[str, Any]]] = None
     tool_call_id: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
 
     class Config:
         populate_by_name = True
         json_schema_extra = {
-            "role": "user",
-            "content": "This is a test message.",
-            "name": None,
-            "function_call": None,
-            "tool_calls": None,
+            "example": {
+                "role": "user",
+                "content": "This is a test message.",
+                "name": None,
+                "function_call": None,
+                "tool_calls": None,
+            }
         }

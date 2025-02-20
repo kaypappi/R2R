@@ -1,14 +1,16 @@
 import logging
 import logging.config
+import os
 import re
 import sys
 from pathlib import Path
 
 
 class HTTPStatusFilter(logging.Filter):
-    """
-    This filter inspects uvicorn.access log records. It uses record.getMessage() to retrieve
-    the fully formatted log message. Then it searches for HTTP status codes and adjusts the
+    """This filter inspects uvicorn.access log records. It uses
+    record.getMessage() to retrieve the fully formatted log message. Then it
+    searches for HTTP status codes and adjusts the.
+
     record's log level based on that status:
       - 4xx: WARNING
       - 5xx: ERROR
@@ -19,6 +21,7 @@ class HTTPStatusFilter(logging.Filter):
     # This should capture the HTTP status code from a line like:
     # '127.0.0.1:54946 - "GET /v2/relationships HTTP/1.1" 404'
     STATUS_CODE_PATTERN = re.compile(r"\b(\d{3})\b")
+    HEALTH_ENDPOINT_PATTERN = re.compile(r'"GET /v3/health HTTP/\d\.\d"')
 
     LEVEL_TO_ANSI = {
         logging.INFO: "\033[32m",  # green
@@ -32,6 +35,12 @@ class HTTPStatusFilter(logging.Filter):
             return True
 
         message = record.getMessage()
+
+        # Filter out health endpoint requests
+        # FIXME: This should be made configurable in the future
+        if self.HEALTH_ENDPOINT_PATTERN.search(message):
+            return False
+
         if codes := self.STATUS_CODE_PATTERN.findall(message):
             status_code = int(codes[-1])
             if 200 <= status_code < 300:
@@ -62,13 +71,21 @@ class HTTPStatusFilter(logging.Filter):
 
 
 def configure_logging():
+    # Read the desired log level from the environment (default to DEBUG)
+    log_level = os.environ.get("R2R_LOG_LEVEL", "INFO").upper()
+
+    # Create a logs directory if it does not already exist
     log_dir = Path.cwd() / "logs"
     log_dir.mkdir(exist_ok=True)
 
     log_config = {
         "version": 1,
         "disable_existing_loggers": False,
-        "filters": {"http_status_filter": {"()": HTTPStatusFilter}},
+        "filters": {
+            "http_status_filter": {
+                "()": HTTPStatusFilter,
+            }
+        },
         "formatters": {
             "default": {
                 "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -95,32 +112,34 @@ def configure_logging():
                 "maxBytes": 10485760,  # 10MB
                 "backupCount": 5,
                 "filters": ["http_status_filter"],
+                "level": log_level,  # Set handler level based on the environment variable
             },
             "console": {
                 "class": "logging.StreamHandler",
                 "formatter": "colored",
                 "stream": sys.stdout,
                 "filters": ["http_status_filter"],
+                "level": log_level,  # Set handler level based on the environment variable
             },
         },
         "loggers": {
             "": {  # Root logger
                 "handlers": ["console", "file"],
-                "level": "INFO",
+                "level": log_level,  # Set logger level based on the environment variable
             },
             "uvicorn": {
                 "handlers": ["console", "file"],
-                "level": "INFO",
+                "level": log_level,
                 "propagate": False,
             },
             "uvicorn.error": {
                 "handlers": ["console", "file"],
-                "level": "INFO",
+                "level": log_level,
                 "propagate": False,
             },
             "uvicorn.access": {
                 "handlers": ["console", "file"],
-                "level": "INFO",
+                "level": log_level,
                 "propagate": False,
             },
         },
@@ -128,4 +147,5 @@ def configure_logging():
 
     logging.config.dictConfig(log_config)
     logger = logging.getLogger()
+    logger.info(f"Logging is configured at {log_level} level.")
     return logger, Path(log_config["handlers"]["file"]["filename"])

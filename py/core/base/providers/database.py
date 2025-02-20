@@ -8,9 +8,9 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from core.base.abstractions import (
+    GraphCreationSettings,
+    GraphEnrichmentSettings,
     GraphSearchSettings,
-    KGCreationSettings,
-    KGEnrichmentSettings,
 )
 
 from .base import Provider, ProviderConfig
@@ -71,11 +71,12 @@ class Handler(ABC):
 
 
 class PostgresConfigurationSettings(BaseModel):
-    """
-    Configuration settings with defaults defined by the PGVector docker image.
+    """Configuration settings with defaults defined by the PGVector docker
+    image.
 
-    These settings are helpful in managing the connections to the database.
-    To tune these settings for a specific deployment, see https://pgtune.leopard.in.ua/
+    These settings are helpful in managing the connections to the database. To
+    tune these settings for a specific deployment, see
+    https://pgtune.leopard.in.ua/
     """
 
     checkpoint_completion_target: Optional[float] = 0.9
@@ -114,7 +115,7 @@ class LimitSettings(BaseModel):
 
 
 class DatabaseConfig(ProviderConfig):
-    """A base database configuration class"""
+    """A base database configuration class."""
 
     provider: str = "postgres"
     user: Optional[str] = None
@@ -128,15 +129,17 @@ class DatabaseConfig(ProviderConfig):
     ] = None
     default_collection_name: str = "Default"
     default_collection_description: str = "Your default collection."
-    collection_summary_system_prompt: str = "default_system"
-    collection_summary_task_prompt: str = "default_collection_summary"
+    collection_summary_system_prompt: str = "system"
+    collection_summary_prompt: str = "collection_summary"
     enable_fts: bool = False
 
     # Graph settings
     batch_size: Optional[int] = 1
-    kg_store_path: Optional[str] = None
-    graph_enrichment_settings: KGEnrichmentSettings = KGEnrichmentSettings()
-    graph_creation_settings: KGCreationSettings = KGCreationSettings()
+    graph_search_results_store_path: Optional[str] = None
+    graph_enrichment_settings: GraphEnrichmentSettings = (
+        GraphEnrichmentSettings()
+    )
+    graph_creation_settings: GraphCreationSettings = GraphCreationSettings()
     graph_search_settings: GraphSearchSettings = GraphSearchSettings()
 
     # Rate limits
@@ -179,27 +182,11 @@ class DatabaseConfig(ProviderConfig):
         for route_str, route_cfg in route_limits_data.items():
             instance.route_limits[route_str] = LimitSettings(**route_cfg)
 
-        # user_limits parsing if needed:
-        # user_limits_data = limits_data.get("users", {})
-        # for user_str, user_cfg in user_limits_data.items():
-        #     user_id = UUID(user_str)
-        #     instance.user_limits[user_id] = LimitSettings(**user_cfg)
-
         return instance
 
 
 class DatabaseProvider(Provider):
     connection_manager: DatabaseConnectionManager
-    # documents_handler: DocumentHandler
-    # collections_handler: CollectionsHandler
-    # token_handler: TokenHandler
-    # users_handler: UserHandler
-    # chunks_handler: ChunkHandler
-    # entity_handler: EntityHandler
-    # relationship_handler: RelationshipHandler
-    # graphs_handler: GraphHandler
-    # prompts_handler: PromptHandler
-    # files_handler: FileHandler
     config: DatabaseConfig
     project_name: str
 

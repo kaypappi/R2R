@@ -1,10 +1,11 @@
-from .auth import R2RAuthProvider, SupabaseAuthProvider
+from .auth import JwtAuthProvider, R2RAuthProvider, SupabaseAuthProvider
 from .crypto import (
     BcryptCryptoConfig,
     BCryptCryptoProvider,
     NaClCryptoConfig,
     NaClCryptoProvider,
 )
+from .database import PostgresDatabaseProvider
 from .email import (
     AsyncSMTPEmailProvider,
     ConsoleMockEmailProvider,
@@ -21,7 +22,12 @@ from .ingestion import (  # type: ignore
     UnstructuredIngestionConfig,
     UnstructuredIngestionProvider,
 )
-from .llm import LiteLLMCompletionProvider, OpenAICompletionProvider
+from .llm import (
+    AnthropicCompletionProvider,
+    LiteLLMCompletionProvider,
+    OpenAICompletionProvider,
+    R2RCompletionProvider,
+)
 from .orchestration import (
     HatchetOrchestrationProvider,
     SimpleOrchestrationProvider,
@@ -31,6 +37,7 @@ __all__ = [
     # Auth
     "R2RAuthProvider",
     "SupabaseAuthProvider",
+    "JwtAuthProvider",
     # Ingestion
     "R2RIngestionProvider",
     "R2RIngestionConfig",
@@ -45,6 +52,8 @@ __all__ = [
     "LiteLLMEmbeddingProvider",
     "OllamaEmbeddingProvider",
     "OpenAIEmbeddingProvider",
+    # Database
+    "PostgresDatabaseProvider",
     # Email
     "AsyncSMTPEmailProvider",
     "ConsoleMockEmailProvider",
@@ -53,6 +62,8 @@ __all__ = [
     "HatchetOrchestrationProvider",
     "SimpleOrchestrationProvider",
     # LLM
+    "AnthropicCompletionProvider",
     "OpenAICompletionProvider",
+    "R2RCompletionProvider",
     "LiteLLMCompletionProvider",
 ]

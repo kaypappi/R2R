@@ -1,6 +1,10 @@
 # type: ignore
 from typing import AsyncGenerator
 
+import networkx as nx
+import numpy as np
+import xlrd
+
 from core.base.parsers.base_parser import AsyncParser
 from core.base.providers import (
     CompletionProvider,
@@ -21,15 +25,7 @@ class XLSParser(AsyncParser[str | bytes]):
         self.database_provider = database_provider
         self.llm_provider = llm_provider
         self.config = config
-        try:
-            import xlrd
-
-            self.xlrd = xlrd
-        except ImportError:
-            raise ImportError(
-                "Error: 'xlrd' is required to run XLSParser. "
-                "Please install it using pip: pip install xlrd"
-            )
+        self.xlrd = xlrd
 
     async def ingest(
         self, data: bytes, *args, **kwargs
@@ -75,27 +71,17 @@ class XLSParserAdvanced(AsyncParser[str | bytes]):
     ):
         self.llm_provider = llm_provider
         self.config = config
-        try:
-            import networkx as nx
-            import numpy as np
-            import xlrd
-
-            self.nx = nx
-            self.np = np
-            self.xlrd = xlrd
-        except ImportError:
-            raise ImportError(
-                "Error: 'networkx', 'numpy', and 'xlrd' are required to run XLSParserAdvanced. "
-                "Please install them using pip: pip install networkx numpy xlrd"
-            )
+        self.nx = nx
+        self.np = np
+        self.xlrd = xlrd
 
     def connected_components(self, arr):
         g = self.nx.grid_2d_graph(len(arr), len(arr[0]))
-        empty_cell_indices = list(zip(*self.np.where(arr == "")))
+        empty_cell_indices = list(zip(*self.np.where(arr == ""), strict=False))
         g.remove_nodes_from(empty_cell_indices)
         components = self.nx.connected_components(g)
         for component in components:
-            rows, cols = zip(*component)
+            rows, cols = zip(*component, strict=False)
             min_row, max_row = min(rows), max(rows)
             min_col, max_col = min(cols), max(cols)
             yield arr[min_row : max_row + 1, min_col : max_col + 1]
@@ -147,6 +133,8 @@ class XLSParserAdvanced(AsyncParser[str | bytes]):
 
                 for i in range(1, num_rows, num_rows_per_chunk):
                     chunk = table[i : i + num_rows_per_chunk]
-                    yield headers + "\n" + "\n".join(
-                        [", ".join(row) for row in chunk]
+                    yield (
+                        headers
+                        + "\n"
+                        + "\n".join([", ".join(row) for row in chunk])
                     )

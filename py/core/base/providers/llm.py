@@ -21,7 +21,7 @@ logger = logging.getLogger()
 
 class CompletionConfig(ProviderConfig):
     provider: Optional[str] = None
-    generation_config: GenerationConfig = GenerationConfig()
+    generation_config: Optional[GenerationConfig] = None
     concurrent_request_limit: int = 256
     fast_llm: str = "openai/gpt-4o"
     max_retries: int = 3
@@ -36,7 +36,7 @@ class CompletionConfig(ProviderConfig):
 
     @property
     def supported_providers(self) -> list[str]:
-        return ["litellm", "openai"]
+        return ["anthropic", "litellm", "openai", "r2r"]
 
 
 class CompletionProvider(Provider):
@@ -60,7 +60,7 @@ class CompletionProvider(Provider):
             try:
                 async with self.semaphore:
                     return await self._execute_task(task)
-            except AuthenticationError as e:
+            except AuthenticationError:
                 raise
             except Exception as e:
                 logger.warning(
@@ -83,7 +83,7 @@ class CompletionProvider(Provider):
                     async for chunk in await self._execute_task(task):
                         yield chunk
                 return  # Successful completion of the stream
-            except AuthenticationError as e:
+            except AuthenticationError:
                 raise
             except Exception as e:
                 logger.warning(
@@ -149,8 +149,6 @@ class CompletionProvider(Provider):
             "generation_config": generation_config,
             "kwargs": kwargs,
         }
-        if modalities := kwargs.get("modalities"):
-            task["modalities"] = modalities
         response = await self._execute_with_backoff_async(task)
         return LLMChatCompletion(**response.dict())
 
@@ -167,7 +165,26 @@ class CompletionProvider(Provider):
             "kwargs": kwargs,
         }
         async for chunk in self._execute_with_backoff_async_stream(task):
-            yield LLMChatCompletionChunk(**chunk.dict())
+            logger.debug(f"Received delta: {chunk.choices[0].delta}")
+            if isinstance(chunk, dict):
+                yield LLMChatCompletionChunk(**chunk)
+                continue
+
+            chunk.choices[0].finish_reason = (
+                chunk.choices[0].finish_reason
+                if chunk.choices[0].finish_reason != ""
+                else None
+            )  # handle error output conventions
+            chunk.choices[0].finish_reason = (
+                chunk.choices[0].finish_reason
+                if chunk.choices[0].finish_reason != "eos"
+                else "stop"
+            )  # hardcode `eos` to `stop` for consistency
+            try:
+                yield LLMChatCompletionChunk(**(chunk.dict()))
+            except Exception as e:
+                logger.error(f"Error parsing chunk: {e}")
+                yield LLMChatCompletionChunk(**(chunk.as_dict()))
 
     def get_completion_stream(
         self,

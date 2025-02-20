@@ -3,7 +3,6 @@ from .structured import *
 from .text import *
 
 __all__ = [
-    # Media parsers
     "AudioParser",
     "BMPParser",
     "DOCParser",
@@ -17,13 +16,12 @@ __all__ = [
     "PPTParser",
     "PPTXParser",
     "RTFParser",
-    # Structured parsers
     "CSVParser",
     "CSVParserAdvanced",
     "EMLParser",
     "EPUBParser",
     "JSONParser",
-    "MSGParser",
+    # "MSGParser",
     "ORGParser",
     "P7SParser",
     "RSTParser",
@@ -32,7 +30,6 @@ __all__ = [
     "XLSParser",
     "XLSXParser",
     "XLSXParserAdvanced",
-    # Text parsers
     "MDParser",
     "HTMLParser",
     "TextParser",

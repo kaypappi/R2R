@@ -50,6 +50,13 @@ class R2RConfig:
             "batch_size",
             "add_title_as_prefix",
         ],
+        "completion_embedding": [
+            "provider",
+            "base_model",
+            "base_dimension",
+            "batch_size",
+            "add_title_as_prefix",
+        ],
         # TODO - deprecated, remove
         "ingestion": ["provider"],
         "logging": ["provider", "log_table"],
@@ -64,6 +71,7 @@ class R2RConfig:
     crypto: CryptoConfig
     database: DatabaseConfig
     embedding: EmbeddingConfig
+    completion_embedding: EmbeddingConfig
     email: EmailConfig
     ingestion: IngestionConfig
     agent: AgentConfig
@@ -84,7 +92,7 @@ class R2RConfig:
         for section, keys in R2RConfig.REQUIRED_KEYS.items():
             # Check the keys when provider is set
             # TODO - remove after deprecation
-            if section in ["kg", "file"] and section not in default_config:
+            if section in ["graph", "file"] and section not in default_config:
                 continue
             if "provider" in default_config[section] and (
                 default_config[section]["provider"] is not None
@@ -94,25 +102,23 @@ class R2RConfig:
                 self._validate_config_section(default_config, section, keys)
             setattr(self, section, default_config[section])
 
-        # TODO - deprecated, remove
-        try:
-            if self.kg.keys() != []:  # type: ignore
-                logger.warning(
-                    "The 'kg' section is deprecated. Please move your arguments to the 'database' section instead."
-                )
-                self.database.update(self.kg)  # type: ignore
-        except:
-            pass
         self.app = AppConfig.create(**self.app)  # type: ignore
         self.auth = AuthConfig.create(**self.auth, app=self.app)  # type: ignore
-        self.completion = CompletionConfig.create(**self.completion, app=self.app)  # type: ignore
+        self.completion = CompletionConfig.create(
+            **self.completion, app=self.app
+        )  # type: ignore
         self.crypto = CryptoConfig.create(**self.crypto, app=self.app)  # type: ignore
         self.email = EmailConfig.create(**self.email, app=self.app)  # type: ignore
         self.database = DatabaseConfig.create(**self.database, app=self.app)  # type: ignore
         self.embedding = EmbeddingConfig.create(**self.embedding, app=self.app)  # type: ignore
+        self.completion_embedding = EmbeddingConfig.create(
+            **self.completion_embedding, app=self.app
+        )  # type: ignore
         self.ingestion = IngestionConfig.create(**self.ingestion, app=self.app)  # type: ignore
         self.agent = AgentConfig.create(**self.agent, app=self.app)  # type: ignore
-        self.orchestration = OrchestrationConfig.create(**self.orchestration, app=self.app)  # type: ignore
+        self.orchestration = OrchestrationConfig.create(
+            **self.orchestration, app=self.app
+        )  # type: ignore
 
         IngestionConfig.set_default(**self.ingestion.dict())
 
@@ -161,7 +167,7 @@ class R2RConfig:
 
     @staticmethod
     def _serialize_config(config_section: Any) -> dict:
-        """Serialize config section while excluding internal state"""
+        """Serialize config section while excluding internal state."""
         if isinstance(config_section, dict):
             return {
                 R2RConfig._serialize_key(k): R2RConfig._serialize_config(v)

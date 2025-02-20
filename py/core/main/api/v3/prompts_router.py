@@ -1,3 +1,4 @@
+import logging
 import textwrap
 from typing import Optional
 
@@ -14,16 +15,16 @@ from core.base.api.models import (
 )
 
 from ...abstractions import R2RProviders, R2RServices
+from ...config import R2RConfig
 from .base_router import BaseRouterV3
 
 
 class PromptsRouter(BaseRouterV3):
     def __init__(
-        self,
-        providers: R2RProviders,
-        services: R2RServices,
+        self, providers: R2RProviders, services: R2RServices, config: R2RConfig
     ):
-        super().__init__(providers, services)
+        logging.info("Initializing PromptsRouter")
+        super().__init__(providers, services, config)
 
     def _setup_routes(self):
         @self.router.post(
@@ -34,8 +35,7 @@ class PromptsRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
@@ -46,13 +46,11 @@ class PromptsRouter(BaseRouterV3):
                                 template="Hello, {name}!",
                                 input_types={"name": "string"}
                             )
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -66,19 +64,16 @@ class PromptsRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "cURL",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             curl -X POST "https://api.example.com/v3/prompts" \\
                                 -H "Authorization: Bearer YOUR_API_KEY" \\
                                 -H "Content-Type: application/json" \\
                                 -d '{"name": "greeting_prompt", "template": "Hello, {name}!", "input_types": {"name": "string"}}'
-                            """
-                        ),
+                            """),
                     },
                 ]
             },
@@ -95,10 +90,10 @@ class PromptsRouter(BaseRouterV3):
             ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedGenericMessageResponse:
-            """
-            Create a new prompt with the given configuration.
+            """Create a new prompt with the given configuration.
 
-            This endpoint allows superusers to create a new prompt with a specified name, template, and input types.
+            This endpoint allows superusers to create a new prompt with a
+            specified name, template, and input types.
             """
             if not auth_user.is_superuser:
                 raise R2RException(
@@ -118,21 +113,18 @@ class PromptsRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
                             # when using auth, do client.login(...)
 
                             result = client.prompts.list()
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -142,25 +134,14 @@ class PromptsRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
-                    },
-                    {
-                        "lang": "CLI",
-                        "source": textwrap.dedent(
-                            """
-                            r2r prompts list
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "cURL",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                                 curl -X GET "https://api.example.com/v3/prompts" \\
                                     -H "Authorization: Bearer YOUR_API_KEY"
-                                """
-                        ),
+                                """),
                     },
                 ]
             },
@@ -169,10 +150,10 @@ class PromptsRouter(BaseRouterV3):
         async def get_prompts(
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedPromptsResponse:
-            """
-            List all available prompts.
+            """List all available prompts.
 
-            This endpoint retrieves a list of all prompts in the system. Only superusers can access this endpoint.
+            This endpoint retrieves a list of all prompts in the system. Only
+            superusers can access this endpoint.
             """
             if not auth_user.is_superuser:
                 raise R2RException(
@@ -198,8 +179,7 @@ class PromptsRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
@@ -210,13 +190,11 @@ class PromptsRouter(BaseRouterV3):
                                 inputs={"name": "John"},
                                 prompt_override="Hi, {name}!"
                             )
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -230,25 +208,14 @@ class PromptsRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
-                    },
-                    {
-                        "lang": "CLI",
-                        "source": textwrap.dedent(
-                            """
-                            r2r prompts retrieve greeting_prompt --inputs '{"name": "John"}' --prompt-override "Hi, {name}!"
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "cURL",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             curl -X POST "https://api.example.com/v3/prompts/greeting_prompt?inputs=%7B%22name%22%3A%22John%22%7D&prompt_override=Hi%2C%20%7Bname%7D!" \\
                                 -H "Authorization: Bearer YOUR_API_KEY"
-                            """
-                        ),
+                            """),
                     },
                 ]
             },
@@ -264,11 +231,12 @@ class PromptsRouter(BaseRouterV3):
             ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedPromptResponse:
-            """
-            Get a specific prompt by name, optionally with inputs and override.
+            """Get a specific prompt by name, optionally with inputs and
+            override.
 
-            This endpoint retrieves a specific prompt and allows for optional inputs and template override.
-            Only superusers can access this endpoint.
+            This endpoint retrieves a specific prompt and allows for optional
+            inputs and template override. Only superusers can access this
+            endpoint.
             """
             if not auth_user.is_superuser:
                 raise R2RException(
@@ -288,8 +256,7 @@ class PromptsRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
@@ -300,13 +267,11 @@ class PromptsRouter(BaseRouterV3):
                                 template="Greetings, {name}!",
                                 input_types={"name": "string", "age": "integer"}
                             )
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -320,19 +285,16 @@ class PromptsRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "cURL",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             curl -X PUT "https://api.example.com/v3/prompts/greeting_prompt" \\
                                 -H "Authorization: Bearer YOUR_API_KEY" \\
                                 -H "Content-Type: application/json" \\
                                 -d '{"template": "Greetings, {name}!", "input_types": {"name": "string", "age": "integer"}}'
-                            """
-                        ),
+                            """),
                     },
                 ]
             },
@@ -349,10 +311,10 @@ class PromptsRouter(BaseRouterV3):
             ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedGenericMessageResponse:
-            """
-            Update an existing prompt's template and/or input types.
+            """Update an existing prompt's template and/or input types.
 
-            This endpoint allows superusers to update the template and input types of an existing prompt.
+            This endpoint allows superusers to update the template and input
+            types of an existing prompt.
             """
             if not auth_user.is_superuser:
                 raise R2RException(
@@ -372,21 +334,18 @@ class PromptsRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
                             # when using auth, do client.login(...)
 
                             result = client.prompts.delete("greeting_prompt")
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -398,25 +357,14 @@ class PromptsRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
-                    },
-                    {
-                        "lang": "CLI",
-                        "source": textwrap.dedent(
-                            """
-                            r2r prompts delete greeting_prompt
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "cURL",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             curl -X DELETE "https://api.example.com/v3/prompts/greeting_prompt" \\
                                 -H "Authorization: Bearer YOUR_API_KEY"
-                            """
-                        ),
+                            """),
                     },
                 ]
             },
@@ -426,8 +374,7 @@ class PromptsRouter(BaseRouterV3):
             name: str = Path(..., description="Prompt name"),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedBooleanResponse:
-            """
-            Delete a prompt by name.
+            """Delete a prompt by name.
 
             This endpoint allows superusers to delete an existing prompt.
             """

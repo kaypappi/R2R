@@ -1,4 +1,3 @@
-import { feature } from "../../feature";
 import { r2rClient } from "../../r2rClient";
 import {
   WrappedBooleanResponse,
@@ -12,9 +11,7 @@ import { downloadBlob } from "../../utils";
 
 let fs: any;
 if (typeof window === "undefined") {
-  import("fs").then((module) => {
-    fs = module;
-  });
+  fs = require("fs");
 }
 export class ConversationsClient {
   constructor(private client: r2rClient) {}
@@ -26,7 +23,6 @@ export class ConversationsClient {
    * @param type The type of conversation
    * @returns The created conversation
    */
-  @feature("conversations.create")
   async create(options?: {
     name?: string;
     collectionId?: string;
@@ -51,7 +47,6 @@ export class ConversationsClient {
    * @param limit Number of conversations to return
    * @returns List of conversations and pagination information
    */
-  @feature("conversations.list")
   async list(options?: {
     ids?: string[];
     collectionId?: string;
@@ -75,7 +70,6 @@ export class ConversationsClient {
    * @param id The ID of the conversation to retrieve
    * @returns The conversation
    */
-  @feature("conversations.retrieve")
   async retrieve(options: {
     id: string;
   }): Promise<WrappedConversationMessagesResponse> {
@@ -90,7 +84,6 @@ export class ConversationsClient {
    * @param type The type of conversation
    * @returns The updated conversation
    */
-  @feature("conversations.update")
   async update(options: {
     id: string;
     name: string;
@@ -113,7 +106,6 @@ export class ConversationsClient {
    * @param id The ID of the conversation to delete
    * @returns Whether the conversation was successfully deleted
    */
-  @feature("conversations.delete")
   async delete(options: { id: string }): Promise<WrappedBooleanResponse> {
     return this.client.makeRequest("DELETE", `conversations/${options.id}`);
   }
@@ -127,7 +119,6 @@ export class ConversationsClient {
    * @param metadata Additional metadata to attach to the message
    * @returns The created message
    */
-  @feature("conversations.addMessage")
   async addMessage(options: {
     id: string;
     content: string;
@@ -159,7 +150,6 @@ export class ConversationsClient {
    * @param metadata Additional metadata to attach to the message
    * @returns The updated message
    */
-  @feature("conversations.updateMessage")
   async updateMessage(options: {
     id: string;
     messageID: string;
@@ -190,7 +180,6 @@ export class ConversationsClient {
    * @param options.includeHeader Whether to include column headers (default: true)
    * @returns Promise<Blob> in browser environments, Promise<void> in Node.js
    */
-  @feature("conversations.export")
   async export(
     options: {
       outputPath?: string;
@@ -235,7 +224,6 @@ export class ConversationsClient {
    * @param filename
    * @param options
    */
-  @feature("conversations.exportToFile")
   async exportToFile(options: {
     filename: string;
     columns?: string[];
@@ -258,7 +246,6 @@ export class ConversationsClient {
    * @param options.includeHeader Whether to include column headers (default: true)
    * @returns Promise<Blob> in browser environments, Promise<void> in Node.js
    */
-  @feature("conversations.exportMessages")
   async exportMessages(
     options: {
       outputPath?: string;
@@ -303,7 +290,6 @@ export class ConversationsClient {
    * @param filename
    * @param options
    */
-  @feature("conversations.exportToFile")
   async exportMessagesToFile(options: {
     filename: string;
     columns?: string[];

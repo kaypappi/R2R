@@ -14,17 +14,13 @@ import { UsersClient } from "./v3/clients/users";
 
 let fs: any;
 if (typeof window === "undefined") {
-  import("fs").then((module) => {
-    fs = module;
-  });
+  fs = require("fs");
 }
-
-import { initializeTelemetry } from "./feature";
 
 type RefreshTokenResponse = {
   results: {
-    accessToken: string;
-    refreshToken: string;
+    accessToken: { token: string };
+    refreshToken: { token: string };
   };
 };
 
@@ -64,8 +60,6 @@ export class r2rClient extends BaseClient {
   ) {
     super(baseURL, "", anonymousTelemetry, options.enableAutoRefresh);
 
-    console.log("[r2rClient] Creating new client with baseURL =", baseURL);
-
     this.chunks = new ChunksClient(this);
     this.collections = new CollectionsClient(this);
     this.conversations = new ConversationsClient(this);
@@ -76,8 +70,6 @@ export class r2rClient extends BaseClient {
     this.retrieval = new RetrievalClient(this);
     this.system = new SystemClient(this);
     this.users = new UsersClient(this);
-
-    initializeTelemetry(this.anonymousTelemetry);
 
     this.axiosInstance = axios.create({
       baseURL: this.baseUrl,
@@ -96,17 +88,7 @@ export class r2rClient extends BaseClient {
         const tokenData = this.getTokensCallback?.();
         const accessToken = tokenData?.accessToken || null;
         if (accessToken) {
-          console.log(
-            `[r2rClient] Attaching access token to request: ${accessToken.slice(
-              0,
-              15,
-            )}...`,
-          );
           config.headers["Authorization"] = `Bearer ${accessToken}`;
-        } else {
-          console.log(
-            "[r2rClient] No access token found, sending request without Authorization header",
-          );
         }
         return config;
       },
@@ -124,28 +106,12 @@ export class r2rClient extends BaseClient {
     this.axiosInstance.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        console.warn(
-          "[r2rClient] Response interceptor caught an error:",
-          error,
-        );
-
         const status = error.response?.status;
         const failingUrl = error.config?.url;
         const errorData = error.response?.data as {
           message?: string;
           error_code?: string;
         };
-
-        console.warn(
-          "[r2rClient] Failing request URL:",
-          failingUrl,
-          "status =",
-          status,
-        );
-        console.warn(
-          "failingUrl?.includes('/v3/users/refresh-token') = ",
-          failingUrl?.includes("/v3/users/refresh-token"),
-        );
 
         // 1) If the refresh endpoint itself fails => don't try again
         if (failingUrl?.includes("/v3/users/refresh-token")) {
@@ -188,17 +154,12 @@ export class r2rClient extends BaseClient {
 
           // Attempt refresh
           try {
-            console.log("[r2rClient] Attempting token refresh...");
-            const refreshResponse =
-              (await this.users.refreshAccessToken()) as RefreshTokenResponse;
-            const newAccessToken = refreshResponse.results.accessToken;
-            const newRefreshToken = refreshResponse.results.refreshToken;
-
-            console.log(
-              "[r2rClient] Refresh call succeeded; new access token:",
-              newAccessToken.slice(0, 15),
-              "...",
-            );
+            //@ts-ignore
+            const refreshResponse = await this.users.refreshAccessToken();
+            //@ts-ignore
+            const newAccessToken = refreshResponse.results.accessToken?.token;
+            //@ts-ignore
+            const newRefreshToken = refreshResponse.results.refreshToken?.token;
 
             // set new tokens
             this.setTokens(newAccessToken, newRefreshToken);
@@ -207,9 +168,6 @@ export class r2rClient extends BaseClient {
             if (error.config) {
               error.config.headers["Authorization"] =
                 `Bearer ${newAccessToken}`;
-              console.log(
-                "[r2rClient] Retrying original request with new access token...",
-              );
               return this.axiosInstance.request(error.config);
             } else {
               console.warn(
@@ -227,9 +185,6 @@ export class r2rClient extends BaseClient {
         }
 
         // 3) If not a 401/403 or it's a 401/403 that isn't token-related => just reject
-        console.log(
-          "[r2rClient] Non-auth error or non-token 401/403 => rejecting",
-        );
         return Promise.reject(error);
       },
     );
@@ -240,7 +195,6 @@ export class r2rClient extends BaseClient {
     endpoint: string,
     options: any = {},
   ): Promise<T> {
-    console.log(`[r2rClient] makeRequest: ${method.toUpperCase()} ${endpoint}`);
     return this._makeRequest(method, endpoint, options, "v3");
   }
 
@@ -252,14 +206,6 @@ export class r2rClient extends BaseClient {
     accessToken: string | null,
     refreshToken: string | null,
   ): void {
-    // Optional: log the changes, but be careful not to log full tokens in prod
-    console.log(
-      "[r2rClient] Setting tokens. Access token:",
-      accessToken?.slice(0, 15),
-      "... refresh token:",
-      refreshToken?.slice(0, 15),
-      "...",
-    );
     super.setTokens(accessToken || "", refreshToken || "");
     this.setTokensCallback?.(accessToken, refreshToken);
   }

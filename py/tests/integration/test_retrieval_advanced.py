@@ -1,47 +1,62 @@
-import pytest
+import uuid
 
-from r2r import Message, R2RException, SearchMode
+from r2r import R2RClient
 
 
 # Semantic Search Tests
-def test_semantic_search_with_near_duplicates(client):
-    """Test semantic search can handle and differentiate near-duplicate content"""
+def test_semantic_search_with_near_duplicates(client: R2RClient):
+    """Test semantic search can handle and differentiate near-duplicate
+    content."""
+    random_1 = str(uuid.uuid4())
+    random_2 = str(uuid.uuid4())
     # Create two similar but distinct documents
     doc1 = client.documents.create(
-        raw_text="Aristotle was a Greek philosopher who studied logic."
-    )["results"]["document_id"]
+        raw_text=
+        f"Aristotle was a Greek philosopher who studied logic {random_1}."
+    ).results.document_id
     doc2 = client.documents.create(
-        raw_text="Aristotle, the Greek philosopher, studied formal logic."
-    )["results"]["document_id"]
+        raw_text=
+        f"Aristotle, the Greek philosopher, studied formal logic {random_2}."
+    ).results.document_id
 
     resp = client.retrieval.search(
         query="Tell me about Aristotle's work in logic",
         search_mode="custom",
-        search_settings={"use_semantic_search": True, "limit": 5},
+        search_settings={
+            "use_semantic_search": True,
+            "limit": 25
+        },
     )
-    results = resp["results"]["chunk_search_results"]
+    results = resp.results.chunk_search_results
 
     # Both documents should be returned but with different scores
-    scores = [r["score"] for r in results if r["document_id"] in [doc1, doc2]]
+    scores = [
+        r.score for r in results
+        if str(r.document_id) in [str(doc1), str(doc2)]
+    ]
     assert len(scores) == 2, "Expected both similar documents"
-    assert (
-        len(set(scores)) == 2
-    ), "Expected different scores for similar documents"
+    assert len(
+        set(scores)) == 2, ("Expected different scores for similar documents")
 
 
-def test_semantic_search_multilingual(client):
-    """Test semantic search handles multilingual content"""
+def test_semantic_search_multilingual(client: R2RClient):
+    """Test semantic search handles multilingual content."""
     # Create documents in different languages
+    random_1 = str(uuid.uuid4())
+    random_2 = str(uuid.uuid4())
+    random_3 = str(uuid.uuid4())
+
     docs = [
-        ("Aristotle was a philosopher", "English"),
-        ("Aristóteles fue un filósofo", "Spanish"),
-        ("アリストテレスは哲学者でした", "Japanese"),
+        (f"Aristotle was a philosopher {random_1}", "English"),
+        (f"Aristóteles fue un filósofo {random_2}", "Spanish"),
+        (f"アリストテレスは哲学者でした {random_3}", "Japanese"),
     ]
     doc_ids = []
     for text, lang in docs:
-        doc_id = client.documents.create(
-            raw_text=text, metadata={"language": lang}
-        )["results"]["document_id"]
+        doc_id = client.documents.create(raw_text=text,
+                                         metadata={
+                                             "language": lang
+                                         }).results.document_id
         doc_ids.append(doc_id)
 
     # Query in different languages
@@ -60,23 +75,23 @@ def test_semantic_search_multilingual(client):
                 "limit": len(doc_ids),
             },
         )
-        results = resp["results"]["chunk_search_results"]
+        results = resp.results.chunk_search_results
         assert len(results) > 0, f"No results found for query: {query}"
 
 
 # UNCOMMENT LATER
 # # Hybrid Search Tests
-# def test_hybrid_search_weight_balance(client):
+# def test_hybrid_search_weight_balance(client: R2RClient):
 #     """Test hybrid search balances semantic and full-text scores appropriately"""
 #     # Create a document with high semantic relevance but low keyword match
 #     semantic_doc = client.documents.create(
 #         raw_text="The ancient Greek thinker who studied under Plato made significant contributions to logic."
-#     )["results"]["document_id"]
+#     ).results.document_id
 
 #     # Create a document with high keyword match but low semantic relevance
 #     keyword_doc = client.documents.create(
 #         raw_text="Aristotle is a common name in certain regions. This text mentions Aristotle but is not about philosophy."
-#     )["results"]["document_id"]
+#     ).results.document_id
 
 #     resp = client.retrieval.search(
 #         query="What were Aristotle's philosophical contributions?",
@@ -104,26 +119,30 @@ def test_semantic_search_multilingual(client):
 
 
 # RAG Tests
-def test_rag_context_window_limits(client):
-    """Test RAG handles documents at or near context window limits"""
+def test_rag_context_window_limits(client: R2RClient):
+    """Test RAG handles documents at or near context window limits."""
     # Create a document that approaches the context window limit
-    large_text = (
-        "Aristotle " * 1000
-    )  # Adjust multiplier based on your context window
-    doc_id = client.documents.create(raw_text=large_text)["results"][
-        "document_id"
-    ]
+    random_1 = str(uuid.uuid4())
+    large_text = ("Aristotle " * 1000
+                  )  # Adjust multiplier based on your context window
+    doc_id = client.documents.create(
+        raw_text=f"{large_text} {random_1}").results.document_id
 
     resp = client.retrieval.rag(
         query="Summarize this text about Aristotle",
-        search_settings={"filters": {"document_id": {"$eq": str(doc_id)}}},
+        search_settings={"filters": {
+            "document_id": {
+                "$eq": str(doc_id)
+            }
+        }},
         rag_generation_config={"max_tokens": 100},
     )
-    assert "results" in resp, "RAG should handle large context gracefully"
+    assert resp.results is not None, (
+        "RAG should handle large context gracefully")
 
 
 # UNCOMMENT LATER
-# def test_rag_empty_chunk_handling(client):
+# def test_rag_empty_chunk_handling(client: R2RClient):
 #     """Test RAG properly handles empty or whitespace-only chunks"""
 #     doc_id = client.documents.create(chunks=["", " ", "\n", "Valid content"])[
 #         "results"
@@ -135,9 +154,8 @@ def test_rag_context_window_limits(client):
 #     )
 #     assert "results" in resp, "RAG should handle empty chunks gracefully"
 
-
 # # Agent Tests
-# def test_agent_clarification_requests(client):
+# def test_agent_clarification_requests(client: R2RClient):
 #     """Test agent's ability to request clarification for ambiguous queries"""
 #     msg = Message(role="user", content="Compare them")
 #     resp = client.retrieval.agent(
@@ -155,9 +173,8 @@ def test_rag_context_window_limits(client):
 #         ]
 #     ), "Agent should request clarification for ambiguous queries"
 
-
 ## TODO - uncomment later
-# def test_agent_source_citation_consistency(client):
+# def test_agent_source_citation_consistency(client: R2RClient):
 #     """Test agent consistently cites sources across conversation turns"""
 #     conversation_id = client.conversations.create()["results"]["id"]
 
@@ -187,10 +204,9 @@ def test_rag_context_window_limits(client):
 #         s in sources2 for s in sources1
 #     ), "Follow-up should reference some original sources"
 
-
 ## TODO - uncomment later
 # # Error Handling Tests
-# def test_malformed_filter_handling(client):
+# def test_malformed_filter_handling(client: R2RClient):
 #     """Test system properly handles malformed filter conditions"""
 #     invalid_filters = [
 #         {"$invalid": {"$eq": "value"}},
@@ -210,9 +226,8 @@ def test_rag_context_window_limits(client):
 #             422,
 #         ], f"Expected validation error for filter: {invalid_filter}"
 
-
 ## TODO - Uncomment later
-# def test_concurrent_search_stability(client):
+# def test_concurrent_search_stability(client: R2RClient):
 #     """Test system handles concurrent search requests properly"""
 #     import asyncio
 
@@ -237,7 +252,7 @@ def test_rag_context_window_limits(client):
 
 # Helper function for source extraction
 def _extract_sources(content: str) -> list[str]:
-    """Extract source citations from response content"""
+    """Extract source citations from response content."""
     # This is a simplified version - implement based on your citation format
     import re
 

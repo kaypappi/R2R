@@ -3,12 +3,12 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from core.base import R2RException, RunManager, Token
+from core.base import R2RException, Token
 from core.base.api.models import User
 from core.telemetry.telemetry_decorator import telemetry_event
 from core.utils import generate_default_user_collection_id
 
-from ..abstractions import R2RAgents, R2RPipelines, R2RPipes, R2RProviders
+from ..abstractions import R2RProviders
 from ..config import R2RConfig
 from .base import Service
 
@@ -20,18 +20,10 @@ class AuthService(Service):
         self,
         config: R2RConfig,
         providers: R2RProviders,
-        pipes: R2RPipes,
-        pipelines: R2RPipelines,
-        agents: R2RAgents,
-        run_manager: RunManager,
     ):
         super().__init__(
             config,
             providers,
-            pipes,
-            pipelines,
-            agents,
-            run_manager,
         )
 
     @telemetry_event("RegisterUser")
@@ -147,7 +139,7 @@ class AuthService(Service):
         bio: Optional[str] = None,
         profile_picture: Optional[str] = None,
         limits_overrides: Optional[dict] = None,
-        merge_limits: Optional[dict] = None,
+        merge_limits: bool = False,
         new_metadata: Optional[dict] = None,
     ) -> User:
         user: User = (
@@ -193,7 +185,8 @@ class AuthService(Service):
             or (
                 user.hashed_password is not None
                 and self.providers.auth.crypto_provider.verify_password(
-                    password, user.hashed_password  # type: ignore
+                    password,
+                    user.hashed_password,  # type: ignore
                 )
             )
         ):
@@ -243,9 +236,10 @@ class AuthService(Service):
         self,
         user_id: UUID,
     ) -> dict:
-        """
-        Get only the verification code data for a specific user.
-        This method should be called after superuser authorization has been verified.
+        """Get only the verification code data for a specific user.
+
+        This method should be called after superuser authorization has been
+        verified.
         """
         verification_data = await self.providers.database.users_handler.get_user_validation_data(
             user_id=user_id
@@ -264,9 +258,10 @@ class AuthService(Service):
         self,
         user_id: UUID,
     ) -> dict:
-        """
-        Get only the verification code data for a specific user.
-        This method should be called after superuser authorization has been verified.
+        """Get only the verification code data for a specific user.
+
+        This method should be called after superuser authorization has been
+        verified.
         """
         verification_data = await self.providers.database.users_handler.get_user_validation_data(
             user_id=user_id
@@ -282,8 +277,7 @@ class AuthService(Service):
 
     @telemetry_event("SendResetEmail")
     async def send_reset_email(self, email: str) -> dict:
-        """
-        Generate a new verification code and send a reset email to the user.
+        """Generate a new verification code and send a reset email to the user.
         Returns the verification code for testing/sandbox environments.
 
         Args:
@@ -297,8 +291,8 @@ class AuthService(Service):
     async def create_user_api_key(
         self, user_id: UUID, name: Optional[str], description: Optional[str]
     ) -> dict:
-        """
-        Generate a new API key for the user with optional name and description.
+        """Generate a new API key for the user with optional name and
+        description.
 
         Args:
             user_id (UUID): The ID of the user
@@ -313,8 +307,7 @@ class AuthService(Service):
         )
 
     async def delete_user_api_key(self, user_id: UUID, key_id: UUID) -> bool:
-        """
-        Delete the API key for the user.
+        """Delete the API key for the user.
 
         Args:
             user_id (UUID): The ID of the user
@@ -327,9 +320,8 @@ class AuthService(Service):
             user_id=user_id, key_id=key_id
         )
 
-    async def list_user_api_keys(self, user_id: UUID) -> dict:
-        """
-        List all API keys for the user.
+    async def list_user_api_keys(self, user_id: UUID) -> list[dict]:
+        """List all API keys for the user.
 
         Args:
             user_id (UUID): The ID of the user

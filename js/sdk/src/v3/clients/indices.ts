@@ -1,9 +1,8 @@
-import { feature } from "../../feature";
 import { r2rClient } from "../../r2rClient";
 import {
   IndexConfig,
   WrappedGenericMessageResponse,
-  WrappedListVectorIndicesResponse,
+  WrappedVectorIndicesResponse,
 } from "../../types";
 
 export class IndiciesClient {
@@ -15,7 +14,6 @@ export class IndiciesClient {
    * @param runWithOrchestration Whether to run index creation as an orchestrated task.
    * @returns
    */
-  @feature("indices.create")
   async create(options: {
     config: IndexConfig;
     runWithOrchestration?: boolean;
@@ -39,12 +37,11 @@ export class IndiciesClient {
    * @param limit Specifies a limit on the number of objects to return, ranging between 1 and 100. Defaults to 100.
    * @returns
    */
-  @feature("indices.list")
   async list(options?: {
     filters?: Record<string, any>;
     offset?: number;
     limit?: number;
-  }): Promise<WrappedListVectorIndicesResponse> {
+  }): Promise<WrappedVectorIndicesResponse> {
     const params: Record<string, any> = {
       offset: options?.offset ?? 0,
       limit: options?.limit ?? 100,
@@ -65,7 +62,6 @@ export class IndiciesClient {
    * @param tableName The name of the table where the index is stored.
    * @returns
    */
-  @feature("indices.retrieve")
   async retrieve(options: {
     tableName: string;
     indexName: string;
@@ -82,7 +78,6 @@ export class IndiciesClient {
    * @param tableName The name of the table where the index is stored.
    * @returns
    */
-  @feature("indices.delete")
   async delete(options: {
     tableName: string;
     indexName: string;

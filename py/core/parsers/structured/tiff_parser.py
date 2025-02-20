@@ -4,6 +4,8 @@ import logging
 from io import BytesIO
 from typing import AsyncGenerator
 
+from PIL import Image
+
 from core.base.abstractions import GenerationConfig
 from core.base.parsers.base_parser import AsyncParser
 from core.base.providers import (
@@ -28,15 +30,7 @@ class TIFFParser(AsyncParser[str | bytes]):
         self.llm_provider = llm_provider
         self.config = config
         self.vision_prompt_text = None
-
-        try:
-            from litellm import supports_vision
-            from PIL import Image
-
-            self.supports_vision = supports_vision
-            self.Image = Image
-        except ImportError:
-            raise ImportError("Required packages not available.")
+        self.Image = Image
 
     async def _convert_tiff_to_jpeg(self, data: bytes) -> bytes:
         """Convert TIFF image to JPEG format."""
@@ -54,7 +48,7 @@ class TIFFParser(AsyncParser[str | bytes]):
                 tiff_image.save(output_buffer, format="JPEG", quality=95)
                 return output_buffer.getvalue()
         except Exception as e:
-            raise ValueError(f"Error converting TIFF to JPEG: {str(e)}")
+            raise ValueError(f"Error converting TIFF to JPEG: {str(e)}") from e
 
     async def ingest(
         self, data: str | bytes, **kwargs
@@ -67,11 +61,6 @@ class TIFFParser(AsyncParser[str | bytes]):
             )
 
         try:
-            if not self.supports_vision(model=self.config.vision_img_model):
-                raise ValueError(
-                    f"Model {self.config.vision_img_model} does not support vision"
-                )
-
             # Convert TIFF to JPEG
             if isinstance(data, bytes):
                 jpeg_data = await self._convert_tiff_to_jpeg(data)
@@ -81,7 +70,7 @@ class TIFFParser(AsyncParser[str | bytes]):
 
             # Use vision model to analyze image
             generation_config = GenerationConfig(
-                model=self.config.vision_img_model,
+                model=self.config.vision_img_model or self.config.app.vlm,
                 stream=False,
             )
 
@@ -113,4 +102,4 @@ class TIFFParser(AsyncParser[str | bytes]):
                 raise ValueError("No response content")
 
         except Exception as e:
-            raise ValueError(f"Error processing TIFF file: {str(e)}")
+            raise ValueError(f"Error processing TIFF file: {str(e)}") from e

@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Any
 
+import tiktoken
 from openai import AsyncOpenAI, AuthenticationError, OpenAI
 from openai._types import NOT_GIVEN
 
@@ -136,11 +137,11 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
     async def async_get_embedding(
         self,
         text: str,
-        stage: EmbeddingProvider.PipeStage = EmbeddingProvider.PipeStage.BASE,
+        stage: EmbeddingProvider.Step = EmbeddingProvider.Step.BASE,
         purpose: EmbeddingPurpose = EmbeddingPurpose.INDEX,
         **kwargs,
     ) -> list[float]:
-        if stage != EmbeddingProvider.PipeStage.BASE:
+        if stage != EmbeddingProvider.Step.BASE:
             raise ValueError(
                 "OpenAIEmbeddingProvider only supports search stage."
             )
@@ -157,11 +158,11 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
     def get_embedding(
         self,
         text: str,
-        stage: EmbeddingProvider.PipeStage = EmbeddingProvider.PipeStage.BASE,
+        stage: EmbeddingProvider.Step = EmbeddingProvider.Step.BASE,
         purpose: EmbeddingPurpose = EmbeddingPurpose.INDEX,
         **kwargs,
     ) -> list[float]:
-        if stage != EmbeddingProvider.PipeStage.BASE:
+        if stage != EmbeddingProvider.Step.BASE:
             raise ValueError(
                 "OpenAIEmbeddingProvider only supports search stage."
             )
@@ -178,11 +179,11 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
     async def async_get_embeddings(
         self,
         texts: list[str],
-        stage: EmbeddingProvider.PipeStage = EmbeddingProvider.PipeStage.BASE,
+        stage: EmbeddingProvider.Step = EmbeddingProvider.Step.BASE,
         purpose: EmbeddingPurpose = EmbeddingPurpose.INDEX,
         **kwargs,
     ) -> list[list[float]]:
-        if stage != EmbeddingProvider.PipeStage.BASE:
+        if stage != EmbeddingProvider.Step.BASE:
             raise ValueError(
                 "OpenAIEmbeddingProvider only supports search stage."
             )
@@ -198,11 +199,11 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
     def get_embeddings(
         self,
         texts: list[str],
-        stage: EmbeddingProvider.PipeStage = EmbeddingProvider.PipeStage.BASE,
+        stage: EmbeddingProvider.Step = EmbeddingProvider.Step.BASE,
         purpose: EmbeddingPurpose = EmbeddingPurpose.INDEX,
         **kwargs,
     ) -> list[list[float]]:
-        if stage != EmbeddingProvider.PipeStage.BASE:
+        if stage != EmbeddingProvider.Step.BASE:
             raise ValueError(
                 "OpenAIEmbeddingProvider only supports search stage."
             )
@@ -219,7 +220,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         self,
         query: str,
         results: list[ChunkSearchResult],
-        stage: EmbeddingProvider.PipeStage = EmbeddingProvider.PipeStage.RERANK,
+        stage: EmbeddingProvider.Step = EmbeddingProvider.Step.RERANK,
         limit: int = 10,
     ):
         return results[:limit]
@@ -228,18 +229,12 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         self,
         query: str,
         results: list[ChunkSearchResult],
-        stage: EmbeddingProvider.PipeStage = EmbeddingProvider.PipeStage.RERANK,
+        stage: EmbeddingProvider.Step = EmbeddingProvider.Step.RERANK,
         limit: int = 10,
     ):
         return results[:limit]
 
     def tokenize_string(self, text: str, model: str) -> list[int]:
-        try:
-            import tiktoken
-        except ImportError as e:
-            raise ValueError(
-                "Must download tiktoken library to run `tokenize_string`."
-            ) from e
         if model not in OpenAIEmbeddingProvider.MODEL_TO_TOKENIZER:
             raise ValueError(f"OpenAI embedding model {model} not supported.")
         encoding = tiktoken.get_encoding(

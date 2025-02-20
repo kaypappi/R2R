@@ -3,6 +3,8 @@ import re
 from io import BytesIO
 from typing import AsyncGenerator
 
+import olefile
+
 from core.base.parsers.base_parser import AsyncParser
 from core.base.providers import (
     CompletionProvider,
@@ -23,16 +25,7 @@ class DOCParser(AsyncParser[str | bytes]):
         self.database_provider = database_provider
         self.llm_provider = llm_provider
         self.config = config
-
-        try:
-            import olefile
-
-            self.olefile = olefile
-        except ImportError:
-            raise ImportError(
-                "Error: 'olefile' is required to run DOCParser. "
-                "Please install it using pip: pip install olefile"
-            )
+        self.olefile = olefile
 
     async def ingest(
         self, data: str | bytes, **kwargs
@@ -75,7 +68,7 @@ class DOCParser(AsyncParser[str | bytes]):
                     yield paragraph.strip()
 
         except Exception as e:
-            raise ValueError(f"Error processing DOC file: {str(e)}")
+            raise ValueError(f"Error processing DOC file: {str(e)}") from e
         finally:
             ole.close()
             file_obj.close()
@@ -96,7 +89,7 @@ class DOCParser(AsyncParser[str | bytes]):
 
             return text
         except Exception as e:
-            raise ValueError(f"Error extracting text: {str(e)}")
+            raise ValueError(f"Error extracting text: {str(e)}") from e
 
     def _clean_text(self, text: str) -> list[str]:
         """Clean and split the extracted text into paragraphs."""

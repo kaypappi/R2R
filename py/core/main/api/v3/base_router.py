@@ -6,21 +6,25 @@ from typing import Callable
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, StreamingResponse
 
-from core.base import R2RException, manage_run
+from core.base import R2RException
 
 from ...abstractions import R2RProviders, R2RServices
+from ...config import R2RConfig
 
 logger = logging.getLogger()
 
 
 class BaseRouterV3:
-    def __init__(self, providers: R2RProviders, services: R2RServices):
+    def __init__(
+        self, providers: R2RProviders, services: R2RServices, config: R2RConfig
+    ):
         """
         :param providers: Typically includes auth, database, etc.
-        :param services: Additional service references (ingestion, run_manager, etc).
+        :param services: Additional service references (ingestion, etc).
         """
         self.providers = providers
         self.services = services
+        self.config = config
         self.router = APIRouter()
         self.openapi_extras = self._load_openapi_extras()
 
@@ -37,60 +41,46 @@ class BaseRouterV3:
     def base_endpoint(self, func: Callable):
         """
         A decorator to wrap endpoints in a standard pattern:
-         - manage_run context
          - error handling
          - response shaping
         """
 
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            async with manage_run(
-                self.services.ingestion.run_manager, func.__name__
-            ) as run_id:
-                auth_user = kwargs.get("auth_user")
-                if auth_user:
-                    # Optionally log run info with the user
-                    await self.services.ingestion.run_manager.log_run_info(
-                        user=auth_user,
-                    )
+            try:
+                func_result = await func(*args, **kwargs)
+                if isinstance(func_result, tuple) and len(func_result) == 2:
+                    results, outer_kwargs = func_result
+                else:
+                    results, outer_kwargs = func_result, {}
 
-                try:
-                    func_result = await func(*args, **kwargs)
-                    if (
-                        isinstance(func_result, tuple)
-                        and len(func_result) == 2
-                    ):
-                        results, outer_kwargs = func_result
-                    else:
-                        results, outer_kwargs = func_result, {}
+                if isinstance(results, (StreamingResponse, FileResponse)):
+                    return results
+                return {"results": results, **outer_kwargs}
 
-                    if isinstance(results, (StreamingResponse, FileResponse)):
-                        return results
-                    return {"results": results, **outer_kwargs}
+            except R2RException:
+                raise
+            except Exception as e:
+                logger.error(
+                    f"Error in base endpoint {func.__name__}() - {str(e)}",
+                    exc_info=True,
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "message": f"An error '{e}' occurred during {func.__name__}",
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                ) from e
 
-                except R2RException:
-                    raise
-                except Exception as e:
-                    logger.error(
-                        f"Error in base endpoint {func.__name__}() - {str(e)}",
-                        exc_info=True,
-                    )
-                    raise HTTPException(
-                        status_code=500,
-                        detail={
-                            "message": f"An error '{e}' occurred during {func.__name__}",
-                            "error": str(e),
-                            "error_type": type(e).__name__,
-                        },
-                    ) from e
-
+        wrapper._is_base_endpoint = True
         return wrapper
 
     @classmethod
     def build_router(cls, engine):
-        """
-        Class method for building a router instance (if you have a standard pattern).
-        """
+        """Class method for building a router instance (if you have a standard
+        pattern)."""
         return cls(engine).router
 
     def _register_workflows(self):
@@ -101,14 +91,12 @@ class BaseRouterV3:
 
     @abstractmethod
     def _setup_routes(self):
-        """
-        Subclasses override this to define actual endpoints.
-        """
+        """Subclasses override this to define actual endpoints."""
         pass
 
     def set_rate_limiting(self):
-        """
-        Adds a yield-based dependency for rate limiting each request.
+        """Adds a yield-based dependency for rate limiting each request.
+
         Checks the limits, then logs the request if the check passes.
         """
 
@@ -116,10 +104,10 @@ class BaseRouterV3:
             request: Request,
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ):
-            """
-            1) Fetch the user from the DB (including .limits_overrides).
-            2) Pass it to limits_handler.check_limits.
-            3) After the endpoint completes, call limits_handler.log_request.
+            """1) Fetch the user from the DB (including .limits_overrides).
+
+            2) Pass it to limits_handler.check_limits. 3) After the endpoint
+            completes, call limits_handler.log_request.
             """
             # If the user is superuser, skip checks
             if auth_user.is_superuser:
@@ -139,11 +127,12 @@ class BaseRouterV3:
             # 2) Rate-limit check
             try:
                 await self.providers.database.limits_handler.check_limits(
-                    user=user, route=route  # Pass the User object
+                    user=user,
+                    route=route,  # Pass the User object
                 )
             except ValueError as e:
                 # If check_limits raises ValueError -> 429 Too Many Requests
-                raise HTTPException(status_code=429, detail=str(e))
+                raise HTTPException(status_code=429, detail=str(e)) from e
 
             request.state.user_id = user_id
             request.state.route = route

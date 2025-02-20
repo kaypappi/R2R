@@ -12,14 +12,22 @@ from shared.api.models.base import (
 )
 from shared.api.models.graph.responses import (
     GraphResponse,
+    WrappedCommunitiesResponse,
+    WrappedCommunityResponse,
+    WrappedEntitiesResponse,
+    WrappedEntityResponse,
     WrappedGraphResponse,
     WrappedGraphsResponse,
+    WrappedRelationshipResponse,
+    WrappedRelationshipsResponse,
 )
 from shared.api.models.ingestion.responses import (
     IngestionResponse,
     WrappedIngestionResponse,
     WrappedMetadataUpdateResponse,
     WrappedUpdateResponse,
+    WrappedVectorIndexResponse,
+    WrappedVectorIndicesResponse,
 )
 from shared.api.models.management.responses import (
     AnalyticsResponse,
@@ -42,7 +50,10 @@ from shared.api.models.management.responses import (
     WrappedConversationsResponse,
     WrappedDocumentResponse,
     WrappedDocumentsResponse,
+    WrappedLimitsResponse,
+    WrappedLoginResponse,
     WrappedLogsResponse,
+    WrappedMessageResponse,
     WrappedPromptResponse,
     WrappedPromptsResponse,
     WrappedServerStatsResponse,
@@ -52,10 +63,13 @@ from shared.api.models.management.responses import (
 )
 from shared.api.models.retrieval.responses import (
     AgentResponse,
-    CombinedSearchResponse,
+    AggregateSearchResult,
+    Citation,
     RAGResponse,
     WrappedAgentResponse,
     WrappedDocumentSearchResponse,
+    WrappedEmbeddingResponse,
+    WrappedLLMChatCompletion,
     WrappedRAGResponse,
     WrappedSearchResponse,
     WrappedVectorSearchResponse,
@@ -71,11 +85,18 @@ __all__ = [
     "IngestionResponse",
     "WrappedIngestionResponse",
     "WrappedUpdateResponse",
+    "WrappedVectorIndexResponse",
+    "WrappedVectorIndicesResponse",
     "WrappedMetadataUpdateResponse",
-    # TODO: Need to review anything above this
     "GraphResponse",
     "WrappedGraphResponse",
     "WrappedGraphsResponse",
+    "WrappedEntityResponse",
+    "WrappedEntitiesResponse",
+    "WrappedRelationshipResponse",
+    "WrappedRelationshipsResponse",
+    "WrappedCommunityResponse",
+    "WrappedCommunitiesResponse",
     # Management Responses
     "PromptResponse",
     "ServerStats",
@@ -108,8 +129,11 @@ __all__ = [
     # User Responses
     "WrappedUserResponse",
     "WrappedAPIKeyResponse",
+    "WrappedLimitsResponse",
     "WrappedAPIKeysResponse",
+    "WrappedLoginResponse",
     "WrappedUsersResponse",
+    "WrappedMessageResponse",
     # Base Responses
     "PaginatedR2RResult",
     "R2RResults",
@@ -119,12 +143,15 @@ __all__ = [
     "WrappedGenericMessageResponse",
     # TODO: Clean up the following responses
     # Retrieval Responses
-    "CombinedSearchResponse",
     "RAGResponse",
+    "Citation",
     "WrappedRAGResponse",
     "AgentResponse",
+    "AggregateSearchResult",
     "WrappedSearchResponse",
     "WrappedDocumentSearchResponse",
     "WrappedVectorSearchResponse",
     "WrappedAgentResponse",
+    "WrappedLLMChatCompletion",
+    "WrappedEmbeddingResponse",
 ]

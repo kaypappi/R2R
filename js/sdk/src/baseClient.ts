@@ -9,9 +9,7 @@ import { ensureCamelCase } from "./utils";
 
 let fs: any;
 if (typeof window === "undefined") {
-  import("fs").then((module) => {
-    fs = module;
-  });
+  fs = require("fs");
 }
 
 function handleRequestError(response: AxiosResponse): void {
@@ -38,25 +36,24 @@ function handleRequestError(response: AxiosResponse): void {
 export abstract class BaseClient {
   protected axiosInstance: AxiosInstance;
   protected baseUrl: string;
-  protected accessToken: string | null;
+  protected accessToken?: string | null;
+  protected apiKey?: string | null;
   protected refreshToken: string | null;
   protected anonymousTelemetry: boolean;
-
-  // NEW: declare enableAutoRefresh
   protected enableAutoRefresh: boolean;
 
   constructor(
-    baseURL: string,
+    baseURL: string = "https://api.cloud.sciphi.ai",
     prefix: string = "",
     anonymousTelemetry = true,
     enableAutoRefresh = false,
   ) {
     this.baseUrl = `${baseURL}${prefix}`;
     this.accessToken = null;
+    this.apiKey = process.env.R2R_API_KEY || null;
     this.refreshToken = null;
     this.anonymousTelemetry = anonymousTelemetry;
 
-    // Add this assignment
     this.enableAutoRefresh = enableAutoRefresh;
 
     this.axiosInstance = axios.create({
@@ -134,7 +131,16 @@ export abstract class BaseClient {
       }
     }
 
+    if (this.accessToken && this.apiKey) {
+      throw new Error("Cannot have both access token and api key.");
+    }
+
     if (
+      this.apiKey &&
+      !["register", "login", "verify_email", "health"].includes(endpoint)
+    ) {
+      config.headers["x-api-key"] = this.apiKey;
+    } else if (
       this.accessToken &&
       !["register", "login", "verify_email", "health"].includes(endpoint)
     ) {
@@ -142,28 +148,7 @@ export abstract class BaseClient {
     }
 
     if (options.responseType === "stream") {
-      const fetchHeaders: Record<string, string> = {};
-      Object.entries(config.headers).forEach(([key, value]) => {
-        if (typeof value === "string") {
-          fetchHeaders[key] = value;
-        }
-      });
-      const response = await fetch(`${this.baseUrl}/${version}/${endpoint}`, {
-        method,
-        headers: fetchHeaders,
-        body: config.data,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          `HTTP error! status: ${response.status}: ${
-            ensureCamelCase(errorData).message || "Unknown error"
-          }`,
-        );
-      }
-
-      return response.body as unknown as T;
+      return this.handleStreamingRequest<T>(method, version, endpoint, config);
     }
 
     try {
@@ -187,6 +172,59 @@ export abstract class BaseClient {
       if (axios.isAxiosError(error) && error.response) {
         handleRequestError(error.response);
       }
+      throw error;
+    }
+  }
+
+  private async handleStreamingRequest<T>(
+    method: Method,
+    version: string,
+    endpoint: string,
+    config: AxiosRequestConfig,
+  ): Promise<T> {
+    const fetchHeaders: Record<string, string> = {};
+
+    // Convert Axios headers to Fetch headers
+    Object.entries(config.headers || {}).forEach(([key, value]) => {
+      if (typeof value === "string") {
+        fetchHeaders[key] = value;
+      }
+    });
+
+    try {
+      const response = await fetch(`${this.baseUrl}/${version}/${endpoint}`, {
+        method,
+        headers: fetchHeaders,
+        body: config.data,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          `HTTP error! status: ${response.status}: ${
+            ensureCamelCase(errorData).message || "Unknown error"
+          }`,
+        );
+      }
+
+      // Create a TransformStream to process the response
+      const transformStream = new TransformStream({
+        transform(chunk, controller) {
+          // Process each chunk here if needed
+          controller.enqueue(chunk);
+        },
+      });
+
+      // Pipe the response through the transform stream
+      const streamedResponse = response.body?.pipeThrough(transformStream);
+
+      if (!streamedResponse) {
+        throw new Error("No response body received from stream");
+      }
+
+      return streamedResponse as unknown as T;
+    } catch (error) {
+      console.error("Streaming request failed:", error);
       throw error;
     }
   }

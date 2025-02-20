@@ -1,20 +1,20 @@
+import logging
 import textwrap
 from datetime import datetime, timezone
-from typing import Optional
 
 import psutil
-from fastapi import Depends, Query
+from fastapi import Depends
 
 from core.base import R2RException
 from core.base.api.models import (
     GenericMessageResponse,
     WrappedGenericMessageResponse,
-    WrappedLogsResponse,
     WrappedServerStatsResponse,
     WrappedSettingsResponse,
 )
 
 from ...abstractions import R2RProviders, R2RServices
+from ...config import R2RConfig
 from .base_router import BaseRouterV3
 
 
@@ -23,33 +23,31 @@ class SystemRouter(BaseRouterV3):
         self,
         providers: R2RProviders,
         services: R2RServices,
+        config: R2RConfig,
     ):
-        super().__init__(providers, services)
+        logging.info("Initializing SystemRouter")
+        super().__init__(providers, services, config)
         self.start_time = datetime.now(timezone.utc)
 
     def _setup_routes(self):
         @self.router.get(
             "/health",
-            # dependencies=[Depends(self.rate_limit_dependency)],
             openapi_extra={
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
                             # when using auth, do client.login(...)
 
                             result = client.system.health()
-                        """
-                        ),
+                        """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -59,26 +57,15 @@ class SystemRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
-                    },
-                    {
-                        "lang": "CLI",
-                        "source": textwrap.dedent(
-                            """
-                            r2r health
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "cURL",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             curl -X POST "https://api.example.com/v3/health"\\
                                  -H "Content-Type: application/json" \\
                                  -H "Authorization: Bearer YOUR_API_KEY" \\
-                        """
-                        ),
+                        """),
                     },
                 ]
             },
@@ -94,21 +81,18 @@ class SystemRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
                             # when using auth, do client.login(...)
 
                             result = client.system.settings()
-                        """
-                        ),
+                        """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -118,26 +102,15 @@ class SystemRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
-                    },
-                    {
-                        "lang": "CLI",
-                        "source": textwrap.dedent(
-                            """
-                            r2r system settings
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "cURL",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             curl -X POST "https://api.example.com/v3/system/settings" \\
                                  -H "Content-Type: application/json" \\
                                  -H "Authorization: Bearer YOUR_API_KEY" \\
-                        """
-                        ),
+                        """),
                     },
                 ]
             },
@@ -160,21 +133,18 @@ class SystemRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
                             # when using auth, do client.login(...)
 
                             result = client.system.status()
-                        """
-                        ),
+                        """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -184,26 +154,15 @@ class SystemRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
-                    },
-                    {
-                        "lang": "CLI",
-                        "source": textwrap.dedent(
-                            """
-                            r2r system status
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "cURL",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             curl -X POST "https://api.example.com/v3/system/status" \\
                                  -H "Content-Type: application/json" \\
                                  -H "Authorization: Bearer YOUR_API_KEY" \\
-                            """
-                        ),
+                            """),
                     },
                 ]
             },

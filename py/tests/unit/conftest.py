@@ -1,14 +1,13 @@
 # tests/conftest.py
 import os
-from uuid import uuid4
 
 import pytest
 
 from core.base import AppConfig, DatabaseConfig, VectorQuantizationType
-from core.database.postgres import (
+from core.providers import NaClCryptoConfig, NaClCryptoProvider
+from core.providers.database.postgres import (
     PostgresChunksHandler,
     PostgresCollectionsHandler,
-    PostgresConnectionManager,
     PostgresConversationsHandler,
     PostgresDatabaseProvider,
     PostgresDocumentsHandler,
@@ -16,11 +15,8 @@ from core.database.postgres import (
     PostgresLimitsHandler,
     PostgresPromptsHandler,
 )
-from core.database.users import (  # Make sure this import is correct
-    PostgresUserHandler,
-)
-from core.providers import NaClCryptoConfig, NaClCryptoProvider
-from core.utils import generate_user_id
+from core.providers.database.users import (  # Make sure this import is correct
+    PostgresUserHandler, )
 
 TEST_DB_CONNECTION_STRING = os.environ.get(
     "TEST_DB_CONNECTION_STRING",
@@ -45,9 +41,8 @@ async def db_provider():
     dimension = 4
     quantization_type = VectorQuantizationType.FP32
 
-    db_provider = PostgresDatabaseProvider(
-        db_config, dimension, crypto_provider, quantization_type
-    )
+    db_provider = PostgresDatabaseProvider(db_config, dimension,
+                                           crypto_provider, quantization_type)
 
     await db_provider.initialize()
     yield db_provider
@@ -132,7 +127,8 @@ async def graphs_handler(db_provider):
         connection_manager=connection_manager,
         dimension=dimension,
         quantization_type=quantization_type,
-        collections_handler=None,  # if needed, or await collections_handler fixture
+        collections_handler=
+        None,  # if needed, or await collections_handler fixture
     )
     await handler.create_tables()
     return handler
@@ -152,8 +148,7 @@ async def limits_handler(db_provider):
     await handler.create_tables()
     # Optionally truncate
     await connection_manager.execute_query(
-        f"TRUNCATE {handler._get_table_name('request_log')};"
-    )
+        f"TRUNCATE {handler._get_table_name('request_log')};")
     return handler
 
 
@@ -171,21 +166,18 @@ async def users_handler(db_provider, crypto_provider):
 
     # Optionally clean up users table before each test
     await connection_manager.execute_query(
-        f"TRUNCATE {handler._get_table_name('users')} CASCADE;"
-    )
+        f"TRUNCATE {handler._get_table_name('users')} CASCADE;")
     await connection_manager.execute_query(
-        f"TRUNCATE {handler._get_table_name('users_api_keys')} CASCADE;"
-    )
+        f"TRUNCATE {handler._get_table_name('users_api_keys')} CASCADE;")
 
     return handler
 
 
 @pytest.fixture
 async def prompt_handler(db_provider):
-    """
-    Returns an instance of PostgresPromptsHandler, creating the necessary tables first.
-    """
-    # from core.database.postgres_prompts import PostgresPromptsHandler
+    """Returns an instance of PostgresPromptsHandler, creating the necessary
+    tables first."""
+    # from core.providers.database.postgres_prompts import PostgresPromptsHandler
 
     project_name = db_provider.project_name
     connection_manager = db_provider.connection_manager

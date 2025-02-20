@@ -12,17 +12,16 @@ from core.base import (
     ConversationResponse,
     DocumentResponse,
     GenerationConfig,
-    KGEnrichmentStatus,
+    GraphConstructionStatus,
     Message,
     Prompt,
     R2RException,
-    RunManager,
     StoreType,
     User,
 )
 from core.telemetry.telemetry_decorator import telemetry_event
 
-from ..abstractions import R2RAgents, R2RPipelines, R2RPipes, R2RProviders
+from ..abstractions import R2RProviders
 from ..config import R2RConfig
 from .base import Service
 from shared.api.models.management.responses import ConversationType
@@ -35,18 +34,10 @@ class ManagementService(Service):
         self,
         config: R2RConfig,
         providers: R2RProviders,
-        pipes: R2RPipes,
-        pipelines: R2RPipelines,
-        agents: R2RAgents,
-        run_manager: RunManager,
     ):
         super().__init__(
             config,
             providers,
-            pipes,
-            pipelines,
-            agents,
-            run_manager,
         )
 
     @telemetry_event("AppSettings")
@@ -56,11 +47,14 @@ class ManagementService(Service):
         )
         config_toml = self.config.to_toml()
         config_dict = toml.loads(config_toml)
+        try:
+            project_name = os.environ["R2R_PROJECT_NAME"]
+        except KeyError:
+            project_name = ""
         return {
             "config": config_dict,
             "prompts": prompts,
-            "r2r_project_name": os.environ["R2R_PROJECT_NAME"],
-            # "r2r_version": get_version("r2r"),
+            "r2r_project_name": project_name,
         }
 
     @telemetry_event("UsersOverview")
@@ -80,25 +74,25 @@ class ManagementService(Service):
         self,
         filters: dict[str, Any],
     ):
-        """
-        Delete chunks matching the given filters. If any documents are now empty
-        (i.e., have no remaining chunks), delete those documents as well.
+        """Delete chunks matching the given filters. If any documents are now
+        empty (i.e., have no remaining chunks), delete those documents as well.
 
         Args:
             filters (dict[str, Any]): Filters specifying which chunks to delete.
             chunks_handler (PostgresChunksHandler): The handler for chunk operations.
             documents_handler (PostgresDocumentsHandler): The handler for document operations.
-            graphs_handler: Handler for entity and relationship operations in the KG.
+            graphs_handler: Handler for entity and relationship operations in the Graph.
 
         Returns:
             dict: A summary of what was deleted.
         """
 
         def transform_chunk_id_to_id(
-            filters: dict[str, Any]
+            filters: dict[str, Any],
         ) -> dict[str, Any]:
-            """
-            Example transformation function if your filters use `chunk_id` instead of `id`.
+            """Example transformation function if your filters use `chunk_id`
+            instead of `id`.
+
             Recursively transform `chunk_id` to `id`.
             """
             if isinstance(filters, dict):
@@ -129,7 +123,7 @@ class ManagementService(Service):
         )
 
         results = interim_results["results"]
-        while interim_results["page_info"]["total_entries"] == 1_000:
+        while interim_results["total_entries"] == 1_000:
             # If we hit the limit, we need to paginate to get all results
 
             interim_results = (
@@ -445,12 +439,12 @@ class ManagementService(Service):
         await self.providers.database.documents_handler.set_workflow_status(
             id=collection_id,
             status_type="graph_sync_status",
-            status=KGEnrichmentStatus.OUTDATED,
+            status=GraphConstructionStatus.OUTDATED,
         )
         await self.providers.database.documents_handler.set_workflow_status(
             id=collection_id,
             status_type="graph_cluster_status",
-            status=KGEnrichmentStatus.OUTDATED,
+            status=GraphConstructionStatus.OUTDATED,
         )
 
         return {"message": "Document assigned to collection successfully"}
@@ -579,7 +573,7 @@ class ManagementService(Service):
             icon=icon,
             parent_id=parent_id,
         )
-        graph_result = await self.providers.database.graphs_handler.create(
+        await self.providers.database.graphs_handler.create(
             collection_id=result.id,
             name=name,
             description=description,
@@ -698,7 +692,7 @@ class ManagementService(Service):
 
         messages = await self.providers.database.prompts_handler.get_message_payload(
             system_prompt_name=self.config.database.collection_summary_system_prompt,
-            task_prompt_name=self.config.database.collection_summary_task_prompt,
+            task_prompt_name=self.config.database.collection_summary_prompt,
             task_inputs={"document_summaries": formatted_summaries},
         )
 
@@ -706,6 +700,7 @@ class ManagementService(Service):
             messages=messages,
             generation_config=GenerationConfig(
                 model=self.config.ingestion.document_summary_model
+                or self.config.app.fast_llm
             ),
         )
 
@@ -724,7 +719,7 @@ class ManagementService(Service):
             )
             return f"Prompt '{name}' added successfully."  # type: ignore
         except ValueError as e:
-            raise R2RException(status_code=400, message=str(e))
+            raise R2RException(status_code=400, message=str(e)) from e
 
     @telemetry_event("GetPrompt")
     async def get_cached_prompt(
@@ -744,7 +739,7 @@ class ManagementService(Service):
                 )
             }
         except ValueError as e:
-            raise R2RException(status_code=404, message=str(e))
+            raise R2RException(status_code=404, message=str(e)) from e
 
     @telemetry_event("GetPrompt")
     async def get_prompt(
@@ -760,7 +755,7 @@ class ManagementService(Service):
                 prompt_override=prompt_override,
             )
         except ValueError as e:
-            raise R2RException(status_code=404, message=str(e))
+            raise R2RException(status_code=404, message=str(e)) from e
 
     @telemetry_event("GetAllPrompts")
     async def get_all_prompts(self) -> dict[str, Prompt]:
@@ -779,7 +774,7 @@ class ManagementService(Service):
             )
             return f"Prompt '{name}' updated successfully."  # type: ignore
         except ValueError as e:
-            raise R2RException(status_code=404, message=str(e))
+            raise R2RException(status_code=404, message=str(e)) from e
 
     @telemetry_event("DeletePrompt")
     async def delete_prompt(self, name: str) -> dict:
@@ -787,7 +782,7 @@ class ManagementService(Service):
             await self.providers.database.prompts_handler.delete_prompt(name)
             return {"message": f"Prompt '{name}' deleted successfully."}
         except ValueError as e:
-            raise R2RException(status_code=404, message=str(e))
+            raise R2RException(status_code=404, message=str(e)) from e
 
     @telemetry_event("GetConversation")
     async def get_conversation(
@@ -906,9 +901,11 @@ class ManagementService(Service):
         conversation_id: UUID,
         user_ids: Optional[list[UUID]] = None,
     ) -> None:
-        await self.providers.database.conversations_handler.delete_conversation(
-            conversation_id=conversation_id,
-            filter_user_ids=user_ids,
+        await (
+            self.providers.database.conversations_handler.delete_conversation(
+                conversation_id=conversation_id,
+                filter_user_ids=user_ids,
+            )
         )
 
     async def get_user_max_documents(self, user_id: UUID) -> int | None:
@@ -942,9 +939,9 @@ class ManagementService(Service):
     async def get_max_upload_size_by_type(
         self, user_id: UUID, file_type_or_ext: str
     ) -> int:
-        """
-        Return the maximum allowed upload size (in bytes) for the given user's file type/extension.
-        Respects user-level overrides if present, falling back to the system config.
+        """Return the maximum allowed upload size (in bytes) for the given
+        user's file type/extension. Respects user-level overrides if present,
+        falling back to the system config.
 
         ```json
         {
@@ -959,7 +956,6 @@ class ManagementService(Service):
             }
         }
         ```
-
         """
         # 1. Normalize extension
         ext = file_type_or_ext.lower().lstrip(".")
@@ -1113,7 +1109,7 @@ class ManagementService(Service):
             await self.providers.database.chunks_handler.list_chunks(
                 limit=1, offset=0, filters={"owner_id": user_id}
             )
-        )["page_info"]["total_entries"]
+        )["total_entries"]
 
         max_collections = await self.get_user_max_collections(user_id)
         used_collections = (

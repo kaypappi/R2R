@@ -10,10 +10,14 @@ const TEST_OUTPUT_DIR = path.join(__dirname, "test-output");
  * marmeladov.txt will have an id of 649d1072-7054-4e17-bd51-1af5f467d617
  * The untitled document will have an id of 5556836e-a51c-57c7-916a-de76c79df2b6
  * The default collection id is 122fdf6a-e116-546b-a8f6-e4cb2e2c0a09
+ * The invalid JSON file will have an id of 04ebba11-8d7c-5e7e-ade8-8f02edee2327
  */
 describe("r2rClient V3 Documents Integration Tests", () => {
   let client: r2rClient;
   let documentId: string;
+  let documentId2: string;
+  let documentId3: string;
+  let documentId4: string;
 
   beforeAll(async () => {
     client = new r2rClient(baseUrl);
@@ -55,6 +59,45 @@ describe("r2rClient V3 Documents Integration Tests", () => {
     expect(response.results.documentId).toBeDefined();
   }, 30000);
 
+  test("Create a document with content that ends in a URL on a newline", async () => {
+    const response = await client.documents.create({
+      raw_text: "This is a test document\nhttps://example.com",
+      metadata: { title: "Test Document with URL", numericId: 789 },
+    });
+
+    expect(response.results.documentId).toBeDefined();
+    documentId2 = response.results.documentId;
+  });
+
+  test("Create a different document with the same URL on a newline", async () => {
+    const response = await client.documents.create({
+      raw_text: "This is a different test document\nhttps://example.com",
+      metadata: { title: "Different Test Document with URL", numericId: 101 },
+    });
+
+    expect(response.results.documentId).toBeDefined();
+    documentId3 = response.results.documentId;
+  });
+
+  test("Create a document in 'fast' ingestion mode", async () => {
+    const response = await client.documents.create({
+      raw_text: "A document with 'fast' ingestion mode.",
+      ingestionMode: "fast",
+    });
+
+    expect(response.results.documentId).toBeDefined();
+    documentId4 = response.results.documentId;
+  });
+
+  test("Create a document from an invalid JSON file", async () => {
+    await expect(
+      client.documents.create({
+        file: { path: "examples/data/invalid.json", name: "invalid.json" },
+        metadata: { title: "invalid.json" },
+      }),
+    ).rejects.toThrow(/Status 400/);
+  });
+
   test("Retrieve document", async () => {
     const response = await client.documents.retrieve({
       id: documentId,
@@ -72,6 +115,20 @@ describe("r2rClient V3 Documents Integration Tests", () => {
     expect(response.results.createdAt).toBeDefined();
     expect(response.results.updatedAt).toBeDefined();
     expect(response.results.summary).toBeDefined();
+  });
+
+  test("Retrieve 'fast' ingestion document", async () => {
+    const response = await client.documents.retrieve({
+      id: documentId4,
+    });
+
+    expect(response.results).toBeDefined();
+    expect(response.results.id).toBe(documentId4);
+    expect(response.results.ingestionStatus).toBe("success");
+    expect(response.results.extractionStatus).toBe("pending");
+    expect(response.results.createdAt).toBeDefined();
+    expect(response.results.updatedAt).toBeDefined();
+    expect(response.results.summary).toBeNull();
   });
 
   test("List documents with no parameters", async () => {
@@ -314,6 +371,38 @@ describe("r2rClient V3 Documents Integration Tests", () => {
   test("Delete untitled document", async () => {
     const response = await client.documents.delete({
       id: "5556836e-a51c-57c7-916a-de76c79df2b6",
+    });
+
+    expect(response.results).toBeDefined();
+  });
+
+  test("Delete document with URL", async () => {
+    const response = await client.documents.delete({
+      id: documentId2,
+    });
+
+    expect(response.results).toBeDefined();
+  });
+
+  test("Delete another document with URL", async () => {
+    const response = await client.documents.delete({
+      id: documentId3,
+    });
+
+    expect(response.results).toBeDefined();
+  });
+
+  test("Delete document with 'fast' ingestion mode", async () => {
+    const response = await client.documents.delete({
+      id: documentId4,
+    });
+
+    expect(response.results).toBeDefined();
+  });
+
+  test("Delete invalid JSON document", async () => {
+    const response = await client.documents.delete({
+      id: "04ebba11-8d7c-5e7e-ade8-8f02edee2327",
     });
 
     expect(response.results).toBeDefined();

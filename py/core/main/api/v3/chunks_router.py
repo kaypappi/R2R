@@ -21,12 +21,9 @@ from core.base.api.models import (
     WrappedChunksResponse,
     WrappedVectorSearchResponse,
 )
-from core.providers import (
-    HatchetOrchestrationProvider,
-    SimpleOrchestrationProvider,
-)
 
 from ...abstractions import R2RProviders, R2RServices
+from ...config import R2RConfig
 from .base_router import BaseRouterV3
 
 logger = logging.getLogger()
@@ -36,11 +33,10 @@ MAX_CHUNKS_PER_REQUEST = 1024 * 100
 
 class ChunksRouter(BaseRouterV3):
     def __init__(
-        self,
-        providers: R2RProviders,
-        services: R2RServices,
+        self, providers: R2RProviders, services: R2RServices, config: R2RConfig
     ):
-        super().__init__(providers, services)
+        logging.info("Initializing ChunksRouter")
+        super().__init__(providers, services, config)
 
     def _setup_routes(self):
         @self.router.post(
@@ -51,8 +47,7 @@ class ChunksRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
@@ -62,8 +57,7 @@ class ChunksRouter(BaseRouterV3):
                                     "limit": 10
                                 }
                             )
-                            """
-                        ),
+                            """),
                     }
                 ]
             },
@@ -77,8 +71,7 @@ class ChunksRouter(BaseRouterV3):
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedVectorSearchResponse:  # type: ignore
             # TODO - Deduplicate this code by sharing the code on the retrieval router
-            """
-            Perform a semantic search query over all stored chunks.
+            """Perform a semantic search query over all stored chunks.
 
             This endpoint allows for complex filtering of search results using PostgreSQL-based queries.
             Filters can be applied to various fields such as document_id, and internal metadata values.
@@ -106,21 +99,18 @@ class ChunksRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
                             response = client.chunks.retrieve(
                                 id="b4ac4dd6-5f27-596e-a55b-7cf242ca30aa"
                             )
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -132,8 +122,7 @@ class ChunksRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
+                            """),
                     },
                 ]
             },
@@ -143,18 +132,16 @@ class ChunksRouter(BaseRouterV3):
             id: UUID = Path(...),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedChunkResponse:
-            """
-            Get a specific chunk by its ID.
+            """Get a specific chunk by its ID.
 
-            Returns the chunk's content, metadata, and associated document/collection information.
-            Users can only retrieve chunks they own or have access to through collections.
+            Returns the chunk's content, metadata, and associated
+            document/collection information. Users can only retrieve chunks
+            they own or have access to through collections.
             """
             chunk = await self.services.ingestion.get_chunk(id)
             if not chunk:
                 raise R2RException("Chunk not found", 404)
 
-            # # Check access rights
-            # document = await self.services.management.get_document(chunk.document_id)
             # TODO - Add collection ID check
             if not auth_user.is_superuser and str(auth_user.id) != str(
                 chunk["owner_id"]
@@ -179,8 +166,7 @@ class ChunksRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
@@ -191,13 +177,11 @@ class ChunksRouter(BaseRouterV3):
                                     "metadata": {"key": "new value"}
                                 }
                             )
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -211,8 +195,7 @@ class ChunksRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
+                            """),
                     },
                 ]
             },
@@ -224,11 +207,11 @@ class ChunksRouter(BaseRouterV3):
             # TODO: Run with orchestration?
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedChunkResponse:
-            """
-            Update an existing chunk's content and/or metadata.
+            """Update an existing chunk's content and/or metadata.
 
-            The chunk's vectors will be automatically recomputed based on the new content.
-            Users can only update chunks they own unless they are superusers.
+            The chunk's vectors will be automatically recomputed based on the
+            new content. Users can only update chunks they own unless they are
+            superusers.
             """
             # Get the existing chunk to get its chunk_id
             existing_chunk = await self.services.ingestion.get_chunk(
@@ -272,21 +255,18 @@ class ChunksRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
                             response = client.chunks.delete(
                                 id="b4ac4dd6-5f27-596e-a55b-7cf242ca30aa"
                             )
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -298,8 +278,7 @@ class ChunksRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
+                            """),
                     },
                 ]
             },
@@ -309,12 +288,11 @@ class ChunksRouter(BaseRouterV3):
             id: UUID = Path(...),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedBooleanResponse:
-            """
-            Delete a specific chunk by ID.
+            """Delete a specific chunk by ID.
 
-            This permanently removes the chunk and its associated vector embeddings.
-            The parent document remains unchanged. Users can only delete chunks they
-            own unless they are superusers.
+            This permanently removes the chunk and its associated vector
+            embeddings. The parent document remains unchanged. Users can only
+            delete chunks they own unless they are superusers.
             """
             # Get the existing chunk to get its chunk_id
             existing_chunk = await self.services.ingestion.get_chunk(id)
@@ -330,8 +308,10 @@ class ChunksRouter(BaseRouterV3):
                     {"chunk_id": {"$eq": str(id)}},
                 ]
             }
-            await self.services.management.delete_documents_and_chunks_by_filter(
-                filters=filters
+            await (
+                self.services.management.delete_documents_and_chunks_by_filter(
+                    filters=filters
+                )
             )
             return GenericBooleanResponse(success=True)  # type: ignore
 
@@ -343,8 +323,7 @@ class ChunksRouter(BaseRouterV3):
                 "x-codeSamples": [
                     {
                         "lang": "Python",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             from r2r import R2RClient
 
                             client = R2RClient()
@@ -354,13 +333,11 @@ class ChunksRouter(BaseRouterV3):
                                 offset=0,
                                 limit=10,
                             )
-                            """
-                        ),
+                            """),
                     },
                     {
                         "lang": "JavaScript",
-                        "source": textwrap.dedent(
-                            """
+                        "source": textwrap.dedent("""
                             const { r2rClient } = require("r2r-js");
 
                             const client = new r2rClient();
@@ -375,8 +352,7 @@ class ChunksRouter(BaseRouterV3):
                             }
 
                             main();
-                            """
-                        ),
+                            """),
                     },
                 ]
             },
@@ -402,15 +378,14 @@ class ChunksRouter(BaseRouterV3):
             ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedChunksResponse:
-            """
-            List chunks with pagination support.
+            """List chunks with pagination support.
 
             Returns a paginated list of chunks that the user has access to.
             Results can be filtered and sorted based on various parameters.
             Vector embeddings are only included if specifically requested.
 
-            Regular users can only list chunks they own or have access to through
-            collections. Superusers can list all chunks in the system.
+            Regular users can only list chunks they own or have access to
+            through collections. Superusers can list all chunks in the system.
             """  # Build filters
             filters = {}
 
@@ -444,4 +419,4 @@ class ChunksRouter(BaseRouterV3):
                 for chunk in results["results"]
             ]
 
-            return (chunks, results["page_info"])  # type: ignore
+            return (chunks, {"total_entries": results["total_entries"]})  # type: ignore

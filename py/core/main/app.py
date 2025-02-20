@@ -8,7 +8,9 @@ from core.providers import (
     HatchetOrchestrationProvider,
     SimpleOrchestrationProvider,
 )
+from core.utils.sentry import init_sentry
 
+from .abstractions import R2RServices
 from .api.v3.chunks_router import ChunksRouter
 from .api.v3.collections_router import CollectionsRouter
 from .api.v3.conversations_router import ConversationsRouter
@@ -17,7 +19,7 @@ from .api.v3.graph_router import GraphRouter
 from .api.v3.indices_router import IndicesRouter
 from .api.v3.logs_router import LogsRouter
 from .api.v3.prompts_router import PromptsRouter
-from .api.v3.retrieval_router import RetrievalRouterV3
+from .api.v3.retrieval_router import RetrievalRouter
 from .api.v3.system_router import SystemRouter
 from .api.v3.users_router import UsersRouter
 from .config import R2RConfig
@@ -30,6 +32,7 @@ class R2RApp:
         orchestration_provider: (
             HatchetOrchestrationProvider | SimpleOrchestrationProvider
         ),
+        services: R2RServices,
         chunks_router: ChunksRouter,
         collections_router: CollectionsRouter,
         conversations_router: ConversationsRouter,
@@ -38,11 +41,14 @@ class R2RApp:
         indices_router: IndicesRouter,
         logs_router: LogsRouter,
         prompts_router: PromptsRouter,
-        retrieval_router_v3: RetrievalRouterV3,
+        retrieval_router: RetrievalRouter,
         system_router: SystemRouter,
         users_router: UsersRouter,
     ):
+        init_sentry()
+
         self.config = config
+        self.services = services
         self.chunks_router = chunks_router
         self.collections_router = collections_router
         self.conversations_router = conversations_router
@@ -52,7 +58,7 @@ class R2RApp:
         self.logs_router = logs_router
         self.orchestration_provider = orchestration_provider
         self.prompts_router = prompts_router
-        self.retrieval_router_v3 = retrieval_router_v3
+        self.retrieval_router = retrieval_router
         self.system_router = system_router
         self.users_router = users_router
 
@@ -80,7 +86,7 @@ class R2RApp:
         self.app.include_router(self.indices_router, prefix="/v3")
         self.app.include_router(self.logs_router, prefix="/v3")
         self.app.include_router(self.prompts_router, prefix="/v3")
-        self.app.include_router(self.retrieval_router_v3, prefix="/v3")
+        self.app.include_router(self.retrieval_router, prefix="/v3")
         self.app.include_router(self.system_router, prefix="/v3")
         self.app.include_router(self.users_router, prefix="/v3")
 

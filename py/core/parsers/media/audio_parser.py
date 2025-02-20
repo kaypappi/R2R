@@ -3,6 +3,8 @@ import os
 import tempfile
 from typing import AsyncGenerator
 
+from litellm import atranscription
+
 from core.base.parsers.base_parser import AsyncParser
 from core.base.providers import (
     CompletionProvider,
@@ -25,21 +27,13 @@ class AudioParser(AsyncParser[bytes]):
         self.database_provider = database_provider
         self.llm_provider = llm_provider
         self.config = config
-        try:
-            from litellm import atranscription
-
-            self.atranscription = atranscription
-        except ImportError:
-            logger.error("Failed to import LiteLLM transcription")
-            raise ImportError(
-                "Please install the `litellm` package to use the AudioParser."
-            )
+        self.atranscription = atranscription
 
     async def ingest(  # type: ignore
         self, data: bytes, **kwargs
     ) -> AsyncGenerator[str, None]:
-        """
-        Ingest audio data and yield a transcription using Whisper via LiteLLM.
+        """Ingest audio data and yield a transcription using Whisper via
+        LiteLLM.
 
         Args:
             data: Raw audio bytes
@@ -58,7 +52,8 @@ class AudioParser(AsyncParser[bytes]):
 
             # Call Whisper transcription
             response = await self.atranscription(
-                model=self.config.audio_transcription_model,
+                model=self.config.audio_transcription_model
+                or self.config.app.audio_lm,
                 file=open(temp_file_path, "rb"),
                 **kwargs,
             )

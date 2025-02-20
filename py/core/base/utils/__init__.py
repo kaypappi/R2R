@@ -5,6 +5,7 @@ from shared.utils import (
     _get_vector_column_str,
     decrement_version,
     deep_update,
+    extract_citations,
     format_search_results_for_llm,
     format_search_results_for_stream,
     generate_default_prompt_id,
@@ -15,8 +16,8 @@ from shared.utils import (
     generate_id,
     generate_user_id,
     increment_version,
-    run_pipeline,
-    to_async_generator,
+    map_citations_to_collector,
+    reassign_citations_in_order,
     validate_uuid,
 )
 
@@ -27,8 +28,6 @@ __all__ = [
     "generate_default_user_collection_id",
     "increment_version",
     "decrement_version",
-    "run_pipeline",
-    "to_async_generator",
     "generate_document_id",
     "generate_extraction_id",
     "generate_user_id",
@@ -38,6 +37,9 @@ __all__ = [
     "TextSplitter",
     "validate_uuid",
     "deep_update",
+    "map_citations_to_collector",
+    "extract_citations",
+    "reassign_citations_in_order",
     "_decorate_vector_type",
     "_get_vector_column_str",
 ]

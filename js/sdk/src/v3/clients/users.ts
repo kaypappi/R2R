@@ -1,4 +1,3 @@
-import { feature } from "../../feature";
 import { r2rClient } from "../../r2rClient";
 import {
   WrappedAPIKeyResponse,
@@ -9,14 +8,14 @@ import {
   WrappedTokenResponse,
   WrappedUserResponse,
   WrappedUsersResponse,
+  WrappedLimitsResponse,
+  WrappedLoginResponse,
 } from "../../types";
 import { downloadBlob } from "../../utils";
 
 let fs: any;
 if (typeof window === "undefined") {
-  import("fs").then((module) => {
-    fs = module;
-  });
+  fs = require("fs");
 }
 
 export class UsersClient {
@@ -31,7 +30,6 @@ export class UsersClient {
    * @param profilePicture The profile picture for the new user
    * @returns WrappedUserResponse
    */
-  @feature("users.create")
   async create(options: {
     email: string;
     password: string;
@@ -59,7 +57,6 @@ export class UsersClient {
    * @param email User's email address
    * @returns WrappedGenericMessageResponse
    */
-  @feature("users.sendVerificationEmail")
   async sendVerificationEmail(options: {
     email: string;
   }): Promise<WrappedGenericMessageResponse> {
@@ -77,7 +74,6 @@ export class UsersClient {
    * @param password User's password
    * @returns
    */
-  @feature("users.delete")
   async delete(options: {
     id: string;
     password: string;
@@ -94,7 +90,6 @@ export class UsersClient {
    * @param email User's email address
    * @param verificationCode Verification code sent to the user's email
    */
-  @feature("users.verifyEmail")
   async verifyEmail(options: {
     email: string;
     verificationCode: string;
@@ -110,8 +105,10 @@ export class UsersClient {
    * @param password User's password
    * @returns
    */
-  @feature("users.login")
-  async login(options: { email: string; password: string }): Promise<any> {
+  async login(options: {
+    email: string;
+    password: string;
+  }): Promise<WrappedLoginResponse> {
     const response = await this.client.makeRequest("POST", "users/login", {
       data: {
         username: options.email,
@@ -137,7 +134,6 @@ export class UsersClient {
    * @param accessToken Existing access token
    * @returns
    */
-  @feature("users.loginWithToken")
   async loginWithToken(options: { accessToken: string }): Promise<any> {
     this.client.setTokens(options.accessToken, null);
 
@@ -162,7 +158,6 @@ export class UsersClient {
    * Log out the current user.
    * @returns
    */
-  @feature("users.logout")
   async logout(): Promise<WrappedGenericMessageResponse> {
     const response = await this.client.makeRequest("POST", "users/logout");
     this.client.setTokens(null, null);
@@ -173,7 +168,6 @@ export class UsersClient {
    * Refresh the access token using the refresh token.
    * @returns
    */
-  @feature("users.refreshAccessToken")
   async refreshAccessToken(): Promise<WrappedTokenResponse> {
     const refreshToken = this.client.getRefreshToken();
     if (!refreshToken) {
@@ -209,7 +203,6 @@ export class UsersClient {
    * @param new_password User's new password
    * @returns
    */
-  @feature("users.changePassword")
   async changePassword(options: {
     current_password: string;
     new_password: string;
@@ -219,28 +212,13 @@ export class UsersClient {
     });
   }
 
-  // /**
-  //  * Request a password reset.
-  //  * @param email User's email address
-  //  * @returns
-  //  */
-  // @feature("users.requestPasswordReset")
-  // async requestPasswordReset(options: {
-  //   email: string;
-  // }): Promise<WrappedGenericMessageResponse> {
-  //   return this.client.makeRequest("POST", "users/request-password-reset", {
-  //     data: options,
-  //   });
-  // }
-
-  @feature("users.requestPasswordReset")
   async requestPasswordReset(
     email: string,
   ): Promise<WrappedGenericMessageResponse> {
     return this.client.makeRequest("POST", "users/request-password-reset", {
-      data: email, // Pass the raw string email
+      data: email,
       headers: {
-        "Content-Type": "text/plain", // Ensure headers specify plain text
+        "Content-Type": "text/plain",
       },
     });
   }
@@ -251,7 +229,6 @@ export class UsersClient {
    * @param new_password New password for the user
    * @returns
    */
-  @feature("users.resetPassword")
   async resetPassword(options: {
     reset_token: string;
     new_password: string;
@@ -270,7 +247,6 @@ export class UsersClient {
    * @param limit Specifies a limit on the number of objects to return, ranging between 1 and 100. Defaults to 100.
    * @returns
    */
-  @feature("users.list")
   async list(options?: {
     email?: string;
     is_active?: boolean;
@@ -303,7 +279,6 @@ export class UsersClient {
    * @param id User ID to retrieve
    * @returns
    */
-  @feature("users.retrieve")
   async retrieve(options: { id: string }): Promise<WrappedUserResponse> {
     return this.client.makeRequest("GET", `users/${options.id}`);
   }
@@ -312,7 +287,6 @@ export class UsersClient {
    * Get detailed information about the currently authenticated user.
    * @returns
    */
-  @feature("users.me")
   async me(): Promise<WrappedUserResponse> {
     return this.client.makeRequest("GET", `users/me`);
   }
@@ -327,7 +301,6 @@ export class UsersClient {
    * @param profilePicture Optional new profile picture for the user
    * @returns
    */
-  @feature("users.update")
   async update(options: {
     id: string;
     email?: string;
@@ -360,7 +333,6 @@ export class UsersClient {
    * @param limit Specifies a limit on the number of objects to return, ranging between 1 and 100. Defaults to 100.
    * @returns
    */
-  @feature("users.listCollections")
   async listCollections(options: {
     id: string;
     offset?: number;
@@ -382,7 +354,6 @@ export class UsersClient {
    * @param collectionId Collection ID to add the user to
    * @returns
    */
-  @feature("users.addToCollection")
   async addToCollection(options: {
     id: string;
     collectionId: string;
@@ -399,7 +370,6 @@ export class UsersClient {
    * @param collectionId Collection ID to remove the user from
    * @returns
    */
-  @feature("users.removeFromCollection")
   async removeFromCollection(options: {
     id: string;
     collectionId: string;
@@ -420,7 +390,6 @@ export class UsersClient {
    * @param options.includeHeader Whether to include column headers (default: true)
    * @returns Promise<Blob> in browser environments, Promise<void> in Node.js
    */
-  @feature("users.export")
   async export(
     options: {
       outputPath?: string;
@@ -461,7 +430,6 @@ export class UsersClient {
    * @param filename
    * @param options
    */
-  @feature("users.exportToFile")
   async exportToFile(options: {
     filename: string;
     columns?: string[];
@@ -480,7 +448,6 @@ export class UsersClient {
    * @param id ID of the user for whom to create an API key
    * @returns WrappedAPIKeyResponse
    */
-  @feature("users.createApiKey")
   async createApiKey(options: {
     id: string;
     name?: string;
@@ -502,7 +469,6 @@ export class UsersClient {
    * @param id ID of the user whose API keys to list
    * @returns WrappedAPIKeysResponse
    */
-  @feature("users.listApiKeys")
   async listApiKeys(options: { id: string }): Promise<WrappedAPIKeysResponse> {
     return this.client.makeRequest("GET", `users/${options.id}/api-keys`);
   }
@@ -514,7 +480,6 @@ export class UsersClient {
    * @param keyId ID of the API key to delete
    * @returns WrappedBooleanResponse
    */
-  @feature("users.deleteApiKey")
   async deleteApiKey(options: {
     id: string;
     keyId: string;
@@ -525,22 +490,18 @@ export class UsersClient {
     );
   }
 
-  async getLimits(options: { id: string }): Promise<any> {
+  async getLimits(options: { id: string }): Promise<WrappedLimitsResponse> {
     return this.client.makeRequest("GET", `users/${options.id}/limits`);
   }
 
-  @feature("users.oauthGoogleAuthorize")
   async oauthGoogleAuthorize(): Promise<{ redirect_url: string }> {
-    // For GET requests, we set the method to "GET" and pass no data
     return this.client.makeRequest("GET", "users/oauth/google/authorize");
   }
 
-  @feature("users.oauthGithubAuthorize")
   async oauthGithubAuthorize(): Promise<{ redirect_url: string }> {
     return this.client.makeRequest("GET", "users/oauth/github/authorize");
   }
 
-  @feature("users.oauthGoogleCallback")
   async oauthGoogleCallback(options: {
     code: string;
     state: string;
@@ -553,7 +514,6 @@ export class UsersClient {
     });
   }
 
-  @feature("users.oauthGithubCallback")
   async oauthGithubCallback(options: {
     code: string;
     state: string;

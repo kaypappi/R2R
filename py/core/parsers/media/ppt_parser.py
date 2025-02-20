@@ -3,6 +3,8 @@ import struct
 from io import BytesIO
 from typing import AsyncGenerator
 
+import olefile
+
 from core.base.parsers.base_parser import AsyncParser
 from core.base.providers import (
     CompletionProvider,
@@ -23,16 +25,7 @@ class PPTParser(AsyncParser[str | bytes]):
         self.database_provider = database_provider
         self.llm_provider = llm_provider
         self.config = config
-
-        try:
-            import olefile
-
-            self.olefile = olefile
-        except ImportError:
-            raise ImportError(
-                "Error: 'olefile' is required to run PPTParser. "
-                "Please install it using pip: pip install olefile"
-            )
+        self.olefile = olefile
 
     def _extract_text_from_record(self, data: bytes) -> str:
         """Extract text from a PPT text record."""
@@ -63,7 +56,7 @@ class PPTParser(AsyncParser[str | bytes]):
             content = ppt_stream.read()
 
             # Text records start with 0x0FA0 or 0x0FD0
-            text_markers = [b"\xA0\x0F", b"\xD0\x0F"]
+            text_markers = [b"\xa0\x0f", b"\xd0\x0f"]
 
             current_position = 0
             while current_position < len(content):
@@ -90,6 +83,6 @@ class PPTParser(AsyncParser[str | bytes]):
                     current_position += 1
 
         except Exception as e:
-            raise ValueError(f"Error processing PPT file: {str(e)}")
+            raise ValueError(f"Error processing PPT file: {str(e)}") from e
         finally:
             ole.close()

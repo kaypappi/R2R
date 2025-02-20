@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from pydantic import Field
 
 from .base import R2RSerializable
+from .llm import GenerationConfig
 
 logger = logging.getLogger()
 
@@ -131,8 +132,8 @@ class IngestionStatus(str, Enum):
         return "document_id"
 
 
-class KGExtractionStatus(str, Enum):
-    """Status of KG Creation per document."""
+class GraphExtractionStatus(str, Enum):
+    """Status of graph creation per document."""
 
     PENDING = "pending"
     PROCESSING = "processing"
@@ -152,8 +153,8 @@ class KGExtractionStatus(str, Enum):
         return "id"
 
 
-class KGEnrichmentStatus(str, Enum):
-    """Status of KG Enrichment per collection."""
+class GraphConstructionStatus(str, Enum):
+    """Status of graph enrichment per collection."""
 
     PENDING = "pending"
     PROCESSING = "processing"
@@ -185,15 +186,17 @@ class DocumentResponse(R2RSerializable):
     version: str
     size_in_bytes: Optional[int]
     ingestion_status: IngestionStatus = IngestionStatus.PENDING
-    extraction_status: KGExtractionStatus = KGExtractionStatus.PENDING
+    extraction_status: GraphExtractionStatus = GraphExtractionStatus.PENDING
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     ingestion_attempt_number: Optional[int] = None
     summary: Optional[str] = None
     summary_embedding: Optional[list[float]] = None  # Add optional embedding
+    total_tokens: Optional[int] = None
 
     def convert_to_db_entry(self):
-        """Prepare the document info for database entry, extracting certain fields from metadata."""
+        """Prepare the document info for database entry, extracting certain
+        fields from metadata."""
         now = datetime.now()
 
         # Format the embedding properly for Postgres vector type
@@ -217,6 +220,29 @@ class DocumentResponse(R2RSerializable):
             "ingestion_attempt_number": self.ingestion_attempt_number or 0,
             "summary": self.summary,
             "summary_embedding": embedding,
+            "total_tokens": self.total_tokens or 0,  # ensure we pass 0 if None
+        }
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "123e4567-e89b-12d3-a456-426614174000",
+                "collection_ids": ["123e4567-e89b-12d3-a456-426614174000"],
+                "owner_id": "123e4567-e89b-12d3-a456-426614174000",
+                "document_type": "pdf",
+                "metadata": {"title": "Sample Document"},
+                "title": "Sample Document",
+                "version": "1.0",
+                "size_in_bytes": 123456,
+                "ingestion_status": "pending",
+                "extraction_status": "pending",
+                "created_at": "2021-01-01T00:00:00",
+                "updated_at": "2021-01-01T00:00:00",
+                "ingestion_attempt_number": 0,
+                "summary": "A summary of the document",
+                "summary_embedding": [0.1, 0.2, 0.3],
+                "total_tokens": 1000,
+            }
         }
 
 
@@ -259,13 +285,8 @@ class IngestionMode(str, Enum):
     custom = "custom"
 
 
-from .llm import GenerationConfig
-
-
 class ChunkEnrichmentSettings(R2RSerializable):
-    """
-    Settings for chunk enrichment.
-    """
+    """Settings for chunk enrichment."""
 
     enable_chunk_enrichment: bool = Field(
         default=False,
@@ -275,13 +296,14 @@ class ChunkEnrichmentSettings(R2RSerializable):
         default=2,
         description="The number of preceding and succeeding chunks to include. Defaults to 2.",
     )
-    generation_config: GenerationConfig = Field(
-        default=GenerationConfig(),
+    generation_config: Optional[GenerationConfig] = Field(
+        default=None,
         description="The generation config to use for chunk enrichment",
     )
-
-
-## TODO - Move ingestion config
+    chunk_enrichment_prompt: Optional[str] = Field(
+        default="chunk_enrichment",
+        description="The prompt to use for chunk enrichment",
+    )
 
 
 class IngestionConfig(R2RSerializable):
@@ -293,19 +315,19 @@ class IngestionConfig(R2RSerializable):
     )
     extra_parsers: dict[str, Any] = {}
 
-    audio_transcription_model: str = "openai/whisper-1"
+    audio_transcription_model: str = ""
 
     vision_img_prompt_name: str = "vision_img"
-    vision_img_model: str = "openai/gpt-4o"
+    vision_img_model: str = ""
 
     vision_pdf_prompt_name: str = "vision_pdf"
-    vision_pdf_model: str = "openai/gpt-4o"
+    vision_pdf_model: str = ""
 
     skip_document_summary: bool = False
-    document_summary_system_prompt: str = "default_system"
-    document_summary_task_prompt: str = "default_summary"
+    document_summary_system_prompt: str = "system"
+    document_summary_task_prompt: str = "summary"
     chunks_for_document_summary: int = 128
-    document_summary_model: str = "openai/gpt-4o-mini"
+    document_summary_model: str = ""
 
     @property
     def supported_providers(self) -> list[str]:
@@ -325,17 +347,18 @@ class IngestionConfig(R2RSerializable):
                 excluded_parsers=["mp4"],
                 chunk_enrichment_settings=ChunkEnrichmentSettings(),  # default
                 extra_parsers={},
-                audio_transcription_model="openai/whisper-1",
+                audio_transcription_model="",
                 vision_img_prompt_name="vision_img",
-                vision_img_model="openai/gpt-4o",
+                vision_img_model="",
                 vision_pdf_prompt_name="vision_pdf",
-                vision_pdf_model="openai/gpt-4o",
+                vision_pdf_model="",
                 skip_document_summary=False,
-                document_summary_system_prompt="default_system",
-                document_summary_task_prompt="default_summary",
+                document_summary_system_prompt="system",
+                document_summary_task_prompt="summary",
                 chunks_for_document_summary=256,  # larger for hi-res
-                document_summary_model="openai/gpt-4o-mini",
+                document_summary_model="",
             )
+
         elif mode == "fast":
             # Skip summaries and other enrichment steps for speed.
             return cls(
@@ -343,16 +366,16 @@ class IngestionConfig(R2RSerializable):
                 excluded_parsers=["mp4"],
                 chunk_enrichment_settings=ChunkEnrichmentSettings(),  # default
                 extra_parsers={},
-                audio_transcription_model="openai/whisper-1",
+                audio_transcription_model="",
                 vision_img_prompt_name="vision_img",
-                vision_img_model="openai/gpt-4o",
+                vision_img_model="",
                 vision_pdf_prompt_name="vision_pdf",
-                vision_pdf_model="openai/gpt-4o",
+                vision_pdf_model="",
                 skip_document_summary=True,  # skip summaries
-                document_summary_system_prompt="default_system",
-                document_summary_task_prompt="default_summary",
+                document_summary_system_prompt="system",
+                document_summary_task_prompt="summary",
                 chunks_for_document_summary=64,
-                document_summary_model="openai/gpt-4o-mini",
+                document_summary_model="",
             )
         else:
             # For `custom` or any unrecognized mode, return a base config
