@@ -16,6 +16,7 @@ from core.base.api.models import (
     WrappedConversationsResponse,
     WrappedMessageResponse,
 )
+from shared.api.models.management.responses import ConversationType
 
 from ...abstractions import R2RProviders, R2RServices
 from .base_router import BaseRouterV3
@@ -92,18 +93,26 @@ class ConversationsRouter(BaseRouterV3):
             name: Optional[str] = Body(
                 None, description="The name of the conversation", embed=True
             ),
+            collection_id: Optional[UUID] = Body(
+                None, description="The ID of the collection to associate with the conversation", embed=True
+            ),
+            type: Optional[str] = Body(
+                None, description="The type of the conversation. Defaults to 'Chat' if not provided.", embed=True
+            ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedConversationResponse:
             """
             Create a new conversation.
 
             This endpoint initializes a new conversation for the authenticated user.
+            Optionally, the conversation can be associated with a collection and a custom type can be specified.
             """
-            user_id = auth_user.id
-
+            conv_type = ConversationType.CHAT if type is None else ConversationType(type)
             return await self.services.management.create_conversation(
-                user_id=user_id,
+                user_id=auth_user.id,
                 name=name,
+                collection_id=collection_id,
+                type=conv_type
             )
 
         @self.router.get(
@@ -170,6 +179,10 @@ class ConversationsRouter(BaseRouterV3):
                 [],
                 description="A list of conversation IDs to retrieve. If not provided, all conversations will be returned.",
             ),
+            collection_id: Optional[UUID] = Query(
+                None,
+                description="Filter conversations by collection ID.",
+            ),
             offset: int = Query(
                 0,
                 ge=0,
@@ -184,29 +197,21 @@ class ConversationsRouter(BaseRouterV3):
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedConversationsResponse:
             """
-            List conversations with pagination and sorting options.
+            List conversations with pagination and filtering options.
 
-            This endpoint returns a paginated list of conversations for the authenticated user.
+            This endpoint returns a list of conversations accessible to the authenticated user.
+            Results can be filtered by conversation IDs and/or collection ID, and paginated using offset and limit parameters.
             """
-            requesting_user_id = (
-                None if auth_user.is_superuser else [auth_user.id]
+            conversation_ids = [UUID(id) for id in ids] if ids else None
+            response = await self.services.management.conversations_overview(
+                offset=offset,
+                limit=limit,
+                user_ids=[auth_user.id],
+                conversation_ids=conversation_ids,
+                collection_id=collection_id,
             )
-
-            conversation_uuids = [
-                UUID(conversation_id) for conversation_id in ids
-            ]
-
-            conversations_response = (
-                await self.services.management.conversations_overview(
-                    offset=offset,
-                    limit=limit,
-                    conversation_ids=conversation_uuids,
-                    user_ids=requesting_user_id,
-                )
-            )
-            return conversations_response["results"], {  # type: ignore
-                "total_entries": conversations_response["total_entries"]
-            }
+            
+            return response["results"], {"total_entries": response["total_entries"]}
 
         @self.router.post(
             "/conversations/export",
@@ -516,7 +521,16 @@ class ConversationsRouter(BaseRouterV3):
                             client = R2RClient()
                             # when using auth, do client.login(...)
 
+                            # Update just the name
                             result = client.conversations.update("123e4567-e89b-12d3-a456-426614174000", "new_name")
+
+                            # Update name and collection
+                            result = client.conversations.update(
+                                "123e4567-e89b-12d3-a456-426614174000",
+                                "new_name",
+                                collection_id="collection-id",
+                                type=ConversationType.STUDY_GUIDE
+                            )
                             """
                         ),
                     },
@@ -529,9 +543,18 @@ class ConversationsRouter(BaseRouterV3):
                             const client = new r2rClient();
 
                             function main() {
+                                // Update just the name
                                 const response = await client.conversations.update({
                                     id: "123e4567-e89b-12d3-a456-426614174000",
                                     name: "new_name",
+                                });
+
+                                // Update name and collection
+                                const response = await client.conversations.update({
+                                    id: "123e4567-e89b-12d3-a456-426614174000",
+                                    name: "new_name",
+                                    collectionId: "collection-id",
+                                    type: ConversationType.STUDY_GUIDE
                                 });
                             }
 
@@ -540,21 +563,24 @@ class ConversationsRouter(BaseRouterV3):
                         ),
                     },
                     {
-                        "lang": "CLI",
-                        "source": textwrap.dedent(
-                            """
-                            r2r conversations delete 123e4567-e89b-12d3-a456-426614174000
-                            """
-                        ),
-                    },
-                    {
                         "lang": "cURL",
                         "source": textwrap.dedent(
                             """
-                            curl -X POST "https://api.example.com/v3/conversations/123e4567-e89b-12d3-a456-426614174000" \
-                                -H "Authorization: Bearer YOUR_API_KEY" \
-                                -H "Content-Type: application/json" \
+                            # Update just the name
+                            curl -X POST "https://api.example.com/v3/conversations/123e4567-e89b-12d3-a456-426614174000" \\
+                                -H "Authorization: Bearer YOUR_API_KEY" \\
+                                -H "Content-Type: application/json" \\
                                 -d '{"name": "new_name"}'
+
+                            # Update name and collection
+                            curl -X POST "https://api.example.com/v3/conversations/123e4567-e89b-12d3-a456-426614174000" \\
+                                -H "Authorization: Bearer YOUR_API_KEY" \\
+                                -H "Content-Type: application/json" \\
+                                -d '{
+                                    "name": "new_name",
+                                    "collection_id": "collection-id",
+                                    "type": "Study Guide"
+                                }'
                             """
                         ),
                     },
@@ -565,11 +591,21 @@ class ConversationsRouter(BaseRouterV3):
         async def update_conversation(
             id: UUID = Path(
                 ...,
-                description="The unique identifier of the conversation to delete",
+                description="The unique identifier of the conversation to update",
             ),
             name: str = Body(
                 ...,
                 description="The updated name for the conversation",
+                embed=True,
+            ),
+            collection_id: Optional[UUID] = Body(
+                None,
+                description="The ID of the collection to associate with the conversation. Only updated if provided.",
+                embed=True,
+            ),
+            type: Optional[ConversationType] = Body(
+                None,
+                description="The type of conversation. Only updated if provided.",
                 embed=True,
             ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
@@ -577,11 +613,14 @@ class ConversationsRouter(BaseRouterV3):
             """
             Update an existing conversation.
 
-            This endpoint updates the name of an existing conversation identified by its UUID.
+            This endpoint updates the specified fields of an existing conversation identified by its UUID.
+            Only provided fields will be updated. Optional fields that are not provided will retain their current values.
             """
             return await self.services.management.update_conversation(
                 conversation_id=id,
                 name=name,
+                collection_id=collection_id,
+                type=type,
             )
 
         @self.router.delete(

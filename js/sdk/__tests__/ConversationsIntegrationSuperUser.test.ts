@@ -1,4 +1,5 @@
 import { r2rClient } from "../src/index";
+import { ConversationType } from "../src/types";
 import { describe, test, beforeAll, expect, afterAll } from "@jest/globals";
 import fs from "fs";
 import path from "path";
@@ -41,6 +42,102 @@ describe("r2rClient V3 Collections Integration Tests", () => {
     conversationId = response.results.id;
     expect(response.results).toBeDefined();
     expect(response.results.name).toBe("Test Conversation");
+    expect(response.results.collectionId).toBeUndefined();
+  });
+
+  test("Create a conversation with a collection", async () => {
+    // Create a collection first
+    const collectionResponse = await client.collections.create({
+      name: "Test Collection",
+    });
+    const collectionId = collectionResponse.results.id;
+
+    // Create conversation with collection
+    const response = await client.conversations.create({
+      name: "Test Conversation",
+      collectionId,
+    });
+    expect(response.results).toBeDefined();
+    expect(response.results.name).toBe("Test Conversation");
+    expect(response.results.collectionId).toBe(collectionId);
+
+    // Cleanup
+    await client.conversations.delete({ id: response.results.id });
+    await client.collections.delete({ id: collectionId });
+  });
+
+  test("List conversations by collection", async () => {
+    // Create a collection
+    const collectionResponse = await client.collections.create({
+      name: "Test Collection",
+    });
+    const collectionId = collectionResponse.results.id;
+
+    // Create conversations with and without collection
+    const conv1 = await client.conversations.create({
+      name: "Conv 1",
+      collectionId,
+    });
+    const conv2 = await client.conversations.create({
+      name: "Conv 2",
+    });
+    const conv3 = await client.conversations.create({
+      name: "Conv 3",
+      collectionId,
+    });
+
+    // List conversations by collection
+    const response = await client.conversations.list({
+      collectionId,
+    });
+    expect(response.results).toHaveLength(2);
+    const convIds = response.results.map((c) => c.id);
+    expect(convIds).toContain(conv1.results.id);
+    expect(convIds).not.toContain(conv2.results.id);
+    expect(convIds).toContain(conv3.results.id);
+
+    // Cleanup
+    await client.conversations.delete({ id: conv1.results.id });
+    await client.conversations.delete({ id: conv2.results.id });
+    await client.conversations.delete({ id: conv3.results.id });
+    await client.collections.delete({ id: collectionId });
+  });
+
+  test("Update conversation collection", async () => {
+    // Create two collections
+    const collection1 = await client.collections.create({
+      name: "Collection 1",
+    });
+    const collection2 = await client.collections.create({
+      name: "Collection 2",
+    });
+
+    // Create conversation in first collection
+    const conv = await client.conversations.create({
+      name: "Test Conv",
+      collectionId: collection1.results.id,
+    });
+    expect(conv.results.collectionId).toBe(collection1.results.id);
+
+    // Update conversation to second collection
+    const updated1 = await client.conversations.update({
+      id: conv.results.id,
+      name: "Updated Conv",
+      collectionId: collection2.results.id,
+    });
+    expect(updated1.results.collectionId).toBe(collection2.results.id);
+
+    // Remove collection association
+    const updated2 = await client.conversations.update({
+      id: conv.results.id,
+      name: "Updated Conv",
+    });
+    expect(updated2.results.collectionId).toBeUndefined();
+
+    // Cleanup
+    await client.conversations.delete({ id: conv.results.id });
+    await client.collections.delete({ id: collection1.results.id });
+    await client.collections.delete({ id: collection2.results.id });
   });
 
   test("Update a conversation name", async () => {
@@ -282,5 +379,72 @@ describe("r2rClient V3 Collections Integration Tests", () => {
   test("Delete a conversation", async () => {
     const response = await client.conversations.delete({ id: conversationId });
     expect(response.results).toBeDefined();
+  });
+
+  test("Create a conversation with a type", async () => {
+    const response = await client.conversations.create({
+      name: "Test Flashcards",
+      type: ConversationType.FLASHCARDS,
+    });
+    expect(response.results).toBeDefined();
+    expect(response.results.name).toBe("Test Flashcards");
+    expect(response.results.type).toBe(ConversationType.FLASHCARDS);
+
+    // Cleanup
+    await client.conversations.delete({ id: response.results.id });
+  });
+
+  test("Create a conversation with default type", async () => {
+    const response = await client.conversations.create({
+      name: "Test Chat",
+    });
+    expect(response.results).toBeDefined();
+    expect(response.results.name).toBe("Test Chat");
+    expect(response.results.type).toBe(ConversationType.CHAT);
+
+    // Cleanup
+    await client.conversations.delete({ id: response.results.id });
+  });
+
+  test("Update conversation type", async () => {
+    // Create conversation with default type
+    const conv = await client.conversations.create({
+      name: "Test Conv",
+    });
+    expect(conv.results.type).toBe(ConversationType.CHAT);
+
+    // Update to Study Guide type
+    const updated = await client.conversations.update({
+      id: conv.results.id,
+      name: "Study Guide Conv",
+      type: ConversationType.STUDY_GUIDE,
+    });
+    expect(updated.results.type).toBe(ConversationType.STUDY_GUIDE);
+
+    // Cleanup
+    await client.conversations.delete({ id: conv.results.id });
+  });
+
+  test("Create conversation with type and collection", async () => {
+    // Create a collection
+    const collectionResponse = await client.collections.create({
+      name: "Test Collection",
+    });
+    const collectionId = collectionResponse.results.id;
+
+    // Create conversation with type and collection
+    const response = await client.conversations.create({
+      name: "Test Quiz",
+      type: ConversationType.PRACTICE_QUIZ,
+      collectionId,
+    });
+    expect(response.results).toBeDefined();
+    expect(response.results.name).toBe("Test Quiz");
+    expect(response.results.type).toBe(ConversationType.PRACTICE_QUIZ);
+    expect(response.results.collectionId).toBe(collectionId);
+
+    // Cleanup
+    await client.conversations.delete({ id: response.results.id });
+    await client.collections.delete({ id: collectionId });
   });
 });

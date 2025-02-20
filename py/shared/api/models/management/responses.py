@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
+from enum import Enum
 
 from pydantic import BaseModel
 
@@ -79,11 +80,24 @@ class CollectionResponse(BaseModel):
     subcollection_details: Optional[list['CollectionResponse']] = None
 
 
+class ConversationType(str, Enum):
+    CHAT = "Chat"
+    FLASHCARDS = "Flashcards"
+    PRACTICE_QUIZ = "Practice Quiz"
+    STUDY_GUIDE = "Study Guide"
+    SOLVE = "Solve"
+    WRITE = "Write"
+    RECORD = "Record"
+    NOTES = "Notes"
+
+
 class ConversationResponse(BaseModel):
     id: UUID
     created_at: datetime
     user_id: Optional[UUID] = None
     name: Optional[str] = None
+    collection_id: Optional[UUID] = None
+    type: ConversationType = ConversationType.CHAT  # Default to Chat type
 
 
 class VerificationResult(BaseModel):

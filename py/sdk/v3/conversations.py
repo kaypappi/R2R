@@ -11,6 +11,7 @@ from shared.api.models.management.responses import (
     WrappedConversationResponse,
     WrappedConversationsResponse,
     WrappedMessageResponse,
+    ConversationType,
 )
 
 
@@ -21,9 +22,16 @@ class ConversationsSDK:
     async def create(
         self,
         name: Optional[str] = None,
+        collection_id: Optional[UUID] = None,
+        type: ConversationType = ConversationType.CHAT,
     ) -> WrappedConversationResponse:
         """
         Create a new conversation.
+
+        Args:
+            name (Optional[str]): The name of the conversation
+            collection_id (Optional[UUID]): The ID of the collection to associate with the conversation
+            type (ConversationType): The type of conversation (defaults to Chat)
 
         Returns:
             dict: Created conversation information
@@ -31,6 +39,9 @@ class ConversationsSDK:
         data: dict[str, Any] = {}
         if name:
             data["name"] = name
+        if collection_id:
+            data["collection_id"] = str(collection_id)
+        data["type"] = type.value
 
         return await self.client._make_request(
             "POST",
@@ -42,14 +53,16 @@ class ConversationsSDK:
     async def list(
         self,
         ids: Optional[list[str | UUID]] = None,
+        collection_id: Optional[UUID] = None,
         offset: Optional[int] = 0,
         limit: Optional[int] = 100,
     ) -> WrappedConversationsResponse:
         """
-        List conversations with pagination and sorting options.
+        List conversations with pagination and filtering options.
 
         Args:
             ids (Optional[list[str | UUID]]): List of conversation IDs to retrieve
+            collection_id (Optional[UUID]): Filter conversations by collection ID
             offset (int, optional): Specifies the number of objects to skip. Defaults to 0.
             limit (int, optional): Specifies a limit on the number of objects to return, ranging between 1 and 100. Defaults to 100.
 
@@ -62,6 +75,8 @@ class ConversationsSDK:
         }
         if ids:
             params["ids"] = ids
+        if collection_id:
+            params["collection_id"] = str(collection_id)
 
         return await self.client._make_request(
             "GET",
@@ -93,6 +108,8 @@ class ConversationsSDK:
         self,
         id: str | UUID,
         name: str,
+        collection_id: Optional[UUID] = None,
+        type: Optional[ConversationType] = None,
     ) -> WrappedConversationResponse:
         """
         Update an existing conversation.
@@ -100,6 +117,8 @@ class ConversationsSDK:
         Args:
             id (str | UUID): The ID of the conversation to update
             name (str): The new name of the conversation
+            collection_id (Optional[UUID]): The ID of the collection to associate with the conversation
+            type (Optional[ConversationType]): The type of conversation
 
         Returns:
             dict: The updated conversation
@@ -107,6 +126,10 @@ class ConversationsSDK:
         data: dict[str, Any] = {
             "name": name,
         }
+        if collection_id:
+            data["collection_id"] = str(collection_id)
+        if type:
+            data["type"] = type.value
 
         return await self.client._make_request(
             "POST",
