@@ -476,7 +476,9 @@ class CollectionsRouter(BaseRouterV3):
                             result = client.collections.update(
                                 "123e4567-e89b-12d3-a456-426614174000",
                                 name="Updated Collection Name",
-                                description="Updated description"
+                                description="Updated description",
+                                theme="#a855f7",
+                                icon="Book"
                             )
                         """),
                     },
@@ -491,7 +493,9 @@ class CollectionsRouter(BaseRouterV3):
                                 const response = await client.collections.update({
                                     id: "123e4567-e89b-12d3-a456-426614174000",
                                     name: "Updated Collection Name",
-                                    description: "Updated description"
+                                    description: "Updated description",
+                                    theme: "#a855f7",
+                                    icon: "Book"
                                 });
                             }
 
@@ -504,7 +508,7 @@ class CollectionsRouter(BaseRouterV3):
                             curl -X POST "https://api.example.com/v3/collections/123e4567-e89b-12d3-a456-426614174000" \\
                                  -H "Content-Type: application/json" \\
                                  -H "Authorization: Bearer YOUR_API_KEY" \\
-                                 -d '{"name": "Updated Collection Name", "description": "Updated description"}'
+                                 -d '{"name": "Updated Collection Name", "description": "Updated description", "theme": "#a855f7", "icon": "Book"}'
                         """),
                     },
                 ]
@@ -522,6 +526,12 @@ class CollectionsRouter(BaseRouterV3):
             description: Optional[str] = Body(
                 None, description="An optional description of the collection"
             ),
+            theme: Optional[str] = Body(
+                None, description="The theme color for the collection (e.g., '#a855f7')"
+            ),
+            icon: Optional[str] = Body(
+                None, description="The icon name for the collection (e.g., 'Book', 'Pencil')"
+            ),
             generate_description: Optional[bool] = Body(
                 False,
                 description="Whether to generate a new synthetic description for the collection",
@@ -530,7 +540,7 @@ class CollectionsRouter(BaseRouterV3):
         ) -> WrappedCollectionResponse:
             """Update an existing collection's configuration.
 
-            This endpoint allows updating the name and description of an
+            This endpoint allows updating the name, description, theme, and icon of an
             existing collection. The user must have appropriate permissions to
             modify the collection.
             """
@@ -548,6 +558,8 @@ class CollectionsRouter(BaseRouterV3):
                 id,
                 name=name,
                 description=description,
+                theme=theme,
+                icon=icon,
                 generate_description=generate_description,
             )
 

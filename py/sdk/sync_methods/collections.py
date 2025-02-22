@@ -100,6 +100,8 @@ class CollectionsSDK:
         id: str | UUID,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        theme: Optional[str] = None,
+        icon: Optional[str] = None,
         generate_description: Optional[bool] = False,
     ) -> WrappedCollectionResponse:
         """Update collection information.
@@ -108,6 +110,8 @@ class CollectionsSDK:
             id (str | UUID): Collection ID to update
             name (Optional[str]): Optional new name for the collection
             description (Optional[str]): Optional new description for the collection
+            theme (Optional[str]): Optional new theme color for the collection (e.g., '#a855f7')
+            icon (Optional[str]): Optional new icon name for the collection (e.g., 'Book')
             generate_description (Optional[bool]): Whether to generate a new synthetic description for the collection.
 
         Returns:
@@ -118,6 +122,10 @@ class CollectionsSDK:
             data["name"] = name
         if description is not None:
             data["description"] = description
+        if theme is not None:
+            data["theme"] = theme
+        if icon is not None:
+            data["icon"] = icon
         if generate_description:
             data["generate_description"] = str(generate_description)
 

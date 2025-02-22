@@ -76,6 +76,8 @@ export class CollectionsClient {
    * @param id Collection ID to update
    * @param name Optional new name for the collection
    * @param description Optional new description for the collection
+   * @param theme Optional new theme color for the collection (e.g., '#a855f7')
+   * @param icon Optional new icon name for the collection (e.g., 'Book')
    * @param generateDescription Whether to generate a new synthetic description for the collection
    * @returns
    */
@@ -83,11 +85,15 @@ export class CollectionsClient {
     id: string;
     name?: string;
     description?: string;
+    theme?: string;
+    icon?: string;
     generateDescription?: boolean;
   }): Promise<WrappedCollectionResponse> {
     const data = {
       ...(options.name && { name: options.name }),
       ...(options.description && { description: options.description }),
+      ...(options.theme && { theme: options.theme }),
+      ...(options.icon && { icon: options.icon }),
       ...(options.generateDescription && {
         generate_description: options.generateDescription,
       }),

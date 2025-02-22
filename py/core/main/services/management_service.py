@@ -576,19 +576,37 @@ class ManagementService(Service):
     @telemetry_event("UpdateCollection")
     async def update_collection(
         self,
-        collection_id: UUID,
+        id: UUID,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        theme: Optional[str] = None,
+        icon: Optional[str] = None,
         generate_description: bool = False,
     ) -> CollectionResponse:
+        """Update a collection's configuration.
+
+        Args:
+            id: The unique identifier of the collection to update.
+            name: Optional new name for the collection.
+            description: Optional new description for the collection.
+            theme: Optional new theme color for the collection (e.g., '#a855f7').
+            icon: Optional new icon name for the collection (e.g., 'Book').
+            generate_description: Whether to generate a new synthetic description.
+
+        Returns:
+            The updated collection.
+        """
         if generate_description:
             description = await self.summarize_collection(
-                id=collection_id, offset=0, limit=100
+                id=id, offset=0, limit=100
             )
+
         return await self.providers.database.collections_handler.update_collection(
-            collection_id=collection_id,
+            collection_id=id,
             name=name,
             description=description,
+            theme=theme,
+            icon=icon,
         )
 
     @telemetry_event("DeleteCollection")
