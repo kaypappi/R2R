@@ -50,6 +50,13 @@ concurrent_request_limit = 64
 provider = "bcrypt"
 
 [database]
+provider = "postgres"
+user = "postgres.slcvfzotfrmahwemiobc"
+password = "49GjfUoUSbgB11sI"
+host = "aws-0-us-west-1.pooler.supabase.com"
+port = 5432
+db_name = "postgres"
+project_name = "r2r_default"
 default_collection_name = "Default"
 default_collection_description = "Your default collection."
 collection_summary_prompt = "collection_summary"

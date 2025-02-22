@@ -109,7 +109,9 @@ class CollectionsRouter(BaseRouterV3):
 
                             result = client.collections.create(
                                 name="My New Collection",
-                                description="This is a sample collection"
+                                description="This is a sample collection",
+                                theme="#a855f7",
+                                icon="Book"
                             )
                         """),
                     },
@@ -123,7 +125,9 @@ class CollectionsRouter(BaseRouterV3):
                             function main() {
                                 const response = await client.collections.create({
                                     name: "My New Collection",
-                                    description: "This is a sample collection"
+                                    description: "This is a sample collection",
+                                    theme: "#a855f7",
+                                    icon: "Book"
                                 });
                             }
 
@@ -136,7 +140,7 @@ class CollectionsRouter(BaseRouterV3):
                             curl -X POST "https://api.example.com/v3/collections" \\
                                  -H "Content-Type: application/json" \\
                                  -H "Authorization: Bearer YOUR_API_KEY" \\
-                                 -d '{"name": "My New Collection", "description": "This is a sample collection"}'
+                                 -d '{"name": "My New Collection", "description": "This is a sample collection", "theme": "#a855f7", "icon": "Book"}'
                         """),
                     },
                 ]
@@ -148,13 +152,19 @@ class CollectionsRouter(BaseRouterV3):
             description: Optional[str] = Body(
                 None, description="An optional description of the collection"
             ),
+            theme: Optional[str] = Body(
+                None, description="The theme color for the collection (e.g., '#a855f7')"
+            ),
+            icon: Optional[str] = Body(
+                None, description="The icon name for the collection (e.g., 'Book', 'Pencil')"
+            ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedCollectionResponse:
             """Create a new collection and automatically add the creating user
             to it.
 
             This endpoint allows authenticated users to create a new collection
-            with a specified name and optional description. The user creating
+            with a specified name, optional description, theme, and icon. The user creating
             the collection is automatically added as a member.
             """
             user_collections_count = (
@@ -176,6 +186,8 @@ class CollectionsRouter(BaseRouterV3):
                 owner_id=auth_user.id,
                 name=name,
                 description=description,
+                theme=theme,
+                icon=icon,
             )
             # Add the creating user to the collection
             await self.services.management.add_user_to_collection(

@@ -1,4 +1,5 @@
 import uuid
+import os
 
 import pytest
 
@@ -242,3 +243,122 @@ def test_retrieve_collection_by_name(client: R2RClient):
 
     # Cleanup: Delete the created collection
     client.collections.delete(created.id)
+
+
+@pytest.mark.asyncio
+async def test_create_collection_with_theme_and_icon(client: R2RClient):
+    """Test creating a collection with custom theme and icon."""
+    collection_name = "Test Collection"
+    theme = "#ff0000"
+    icon = "Star"
+    
+    collection = await client.collections.create_collection(
+        name=collection_name,
+        theme=theme,
+        icon=icon
+    )
+    
+    assert collection.name == collection_name
+    assert collection.theme == theme
+    assert collection.icon == icon
+    assert collection.parent_id is None
+
+    # Verify main subcollection was created
+    collections = await client.collections.get_collections()
+    main_subcoll = next(
+        (c for c in collections.results if c.parent_id == collection.id),
+        None
+    )
+    assert main_subcoll is not None
+    assert main_subcoll.name == os.getenv("R2R_MAIN_SUBCOLLECTION_NAME", "Class 1")
+    
+    # Verify standard subcollections were created under main subcollection
+    subcollections = [c for c in collections.results if c.parent_id == main_subcoll.id]
+    assert len(subcollections) == 3
+    
+    # Verify subcollection names
+    subcoll_names = {c.name for c in subcollections}
+    expected_names = {
+        os.getenv("R2R_TEXTBOOKS_NAME", "Textbooks"),
+        os.getenv("R2R_ASSIGNMENTS_NAME", "Assignments"),
+        os.getenv("R2R_NOTES_NAME", "Notes")
+    }
+    assert subcoll_names == expected_names
+
+
+@pytest.mark.asyncio
+async def test_create_collection_without_name_no_subcollections(client: R2RClient):
+    """Test that collections created without a name don't get subcollections."""
+    collection = await client.collections.create_collection()
+    
+    collections = await client.collections.get_collections()
+    subcollections = [c for c in collections.results if c.parent_id == collection.id]
+    assert len(subcollections) == 0
+
+
+@pytest.mark.asyncio
+async def test_create_subcollection(client: R2RClient):
+    """Test creating a subcollection under an existing collection."""
+    parent = await client.collections.create_collection(name="Parent Collection")
+    
+    subcoll_name = "Test Subcollection"
+    subcoll_theme = "#00ff00"
+    subcoll_icon = "Folder"
+    
+    subcollection = await client.collections.create_collection(
+        name=subcoll_name,
+        theme=subcoll_theme,
+        icon=subcoll_icon,
+        parent_id=parent.id
+    )
+    
+    assert subcollection.name == subcoll_name
+    assert subcollection.theme == subcoll_theme
+    assert subcollection.icon == subcoll_icon
+    assert subcollection.parent_id == parent.id
+
+
+@pytest.mark.asyncio
+async def test_update_collection_theme_and_icon(client: R2RClient):
+    """Test updating a collection's theme and icon."""
+    collection = await client.collections.create_collection(name="Test Collection")
+    
+    new_theme = "#0000ff"
+    new_icon = "Heart"
+    
+    updated = await client.collections.update_collection(
+        collection.id,
+        theme=new_theme,
+        icon=new_icon
+    )
+    
+    assert updated.theme == new_theme
+    assert updated.icon == new_icon
+
+
+@pytest.mark.asyncio
+async def test_prevent_circular_parent_reference(client: R2RClient):
+    """Test that circular parent references are prevented."""
+    collection1 = await client.collections.create_collection(name="Collection 1")
+    collection2 = await client.collections.create_collection(
+        name="Collection 2",
+        parent_id=collection1.id
+    )
+    
+    # Attempt to make collection1 a child of collection2
+    with pytest.raises(Exception) as exc_info:
+        await client.collections.update_collection(
+            collection1.id,
+            parent_id=collection2.id
+        )
+    
+    assert "Circular parent reference detected" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_default_theme_and_icon(client: R2RClient):
+    """Test that default theme and icon are applied when not specified."""
+    collection = await client.collections.create_collection(name="Test Collection")
+    
+    assert collection.theme == os.getenv("R2R_DEFAULT_COLLECTION_THEME", "#a855f7")
+    assert collection.icon == os.getenv("R2R_DEFAULT_COLLECTION_ICON", "Book")

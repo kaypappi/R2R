@@ -21,11 +21,15 @@ export class CollectionsClient {
    * Create a new collection.
    * @param name Name of the collection
    * @param description Optional description of the collection
+   * @param theme Optional theme color for the collection (e.g., '#a855f7')
+   * @param icon Optional icon name for the collection (e.g., 'Book', 'Pencil')
    * @returns A promise that resolves with the created collection
    */
   async create(options: {
     name: string;
     description?: string;
+    theme?: string;
+    icon?: string;
   }): Promise<WrappedCollectionResponse> {
     return this.client.makeRequest("POST", "collections", {
       data: options,

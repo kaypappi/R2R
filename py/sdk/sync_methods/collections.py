@@ -19,17 +19,26 @@ class CollectionsSDK:
         self,
         name: str,
         description: Optional[str] = None,
+        theme: Optional[str] = None,
+        icon: Optional[str] = None,
     ) -> WrappedCollectionResponse:
         """Create a new collection.
 
         Args:
             name (str): Name of the collection
             description (Optional[str]): Description of the collection
+            theme (Optional[str]): Theme color for the collection (e.g., '#a855f7')
+            icon (Optional[str]): Icon name for the collection (e.g., 'Book', 'Pencil')
 
         Returns:
             WrappedCollectionResponse
         """
-        data: dict[str, Any] = {"name": name, "description": description}
+        data: dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "theme": theme,
+            "icon": icon
+        }
         response_dict = self.client._make_request(
             "POST",
             "collections",

@@ -2,6 +2,7 @@ import csv
 import json
 import logging
 import tempfile
+import os
 from typing import IO, Any, Optional
 from uuid import UUID, uuid4
 
@@ -40,22 +41,23 @@ class PostgresCollectionsHandler(Handler):
         super().__init__(project_name, connection_manager)
 
     async def create_tables(self) -> None:
-        # 1. Create the table if it does not exist.
-        create_table_query = f"""
+        """Create the collections table if it does not exist."""
+        create_table = f"""
         CREATE TABLE IF NOT EXISTS {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            id UUID PRIMARY KEY,
             owner_id UUID,
-            name TEXT NOT NULL,
+            name VARCHAR(255),
             description TEXT,
-            graph_sync_status TEXT DEFAULT 'pending',
-            graph_cluster_status TEXT DEFAULT 'pending',
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW(),
-            user_count INT DEFAULT 0,
-            document_count INT DEFAULT 0
+            theme VARCHAR(50),
+            icon VARCHAR(50),
+            parent_id UUID REFERENCES {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}(id),
+            graph_sync_status VARCHAR(50) DEFAULT 'NOT_STARTED',
+            graph_cluster_status VARCHAR(50) DEFAULT 'NOT_STARTED',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         """
-        await self.connection_manager.execute_query(create_table_query)
+        await self.connection_manager.execute_query(create_table)
 
         # 2. Check for duplicate rows that would violate the uniqueness constraint.
         check_duplicates_query = f"""
@@ -124,22 +126,41 @@ class PostgresCollectionsHandler(Handler):
         name: Optional[str] = None,
         description: str = "",
         collection_id: Optional[UUID] = None,
+        theme: Optional[str] = None,
+        icon: Optional[str] = None,
+        parent_id: Optional[UUID] = None,
     ) -> CollectionResponse:
+        """Create a new collection with optional subcollections."""
+        logger.info(
+            "Creating collection with params: owner_id=%s, name=%s, description=%s, collection_id=%s, theme=%s, icon=%s, parent_id=%s",
+            owner_id, name, description, collection_id, theme, icon, parent_id
+        )
+
         if not name and not collection_id:
             name = self.config.default_collection_name
             collection_id = generate_default_user_collection_id(owner_id)
+            logger.info("Using default collection name=%s and generated collection_id=%s", name, collection_id)
+
+        # Set default theme and icon if not provided
+        theme = theme or os.getenv("R2R_DEFAULT_COLLECTION_THEME", "#a855f7")
+        icon = icon or os.getenv("R2R_DEFAULT_COLLECTION_ICON", "Book")
+        logger.info("Using theme=%s and icon=%s", theme, icon)
 
         query = f"""
             INSERT INTO {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-            (id, owner_id, name, description)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, owner_id, name, description, graph_sync_status, graph_cluster_status, created_at, updated_at
+            (id, owner_id, name, description, theme, icon, parent_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, owner_id, name, description, theme, icon, parent_id, graph_sync_status, graph_cluster_status, created_at, updated_at
         """
+        collection_id = collection_id or uuid4()
         params = [
-            collection_id or uuid4(),
+            collection_id,
             owner_id,
             name,
             description,
+            theme,
+            icon,
+            parent_id,
         ]
 
         try:
@@ -148,15 +169,19 @@ class PostgresCollectionsHandler(Handler):
                 params=params,
             )
             if not result:
+                logger.error("Failed to create collection - no result returned")
                 raise R2RException(
                     status_code=404, message="Collection not found"
                 )
 
-            return CollectionResponse(
+            collection_response = CollectionResponse(
                 id=result["id"],
                 owner_id=result["owner_id"],
                 name=result["name"],
                 description=result["description"],
+                theme=result["theme"],
+                icon=result["icon"],
+                parent_id=result["parent_id"],
                 graph_cluster_status=result["graph_cluster_status"],
                 graph_sync_status=result["graph_sync_status"],
                 created_at=result["created_at"],
@@ -164,12 +189,112 @@ class PostgresCollectionsHandler(Handler):
                 user_count=0,
                 document_count=0,
             )
+            
+            logger.info(
+                "Created collection: id=%s, name=%s, owner_id=%s, description=%s, theme=%s, icon=%s, parent_id=%s, graph_cluster_status=%s, graph_sync_status=%s, created_at=%s, updated_at=%s",
+                collection_response.id,
+                collection_response.name,
+                collection_response.owner_id,
+                collection_response.description,
+                collection_response.theme,
+                collection_response.icon,
+                collection_response.parent_id,
+                collection_response.graph_cluster_status,
+                collection_response.graph_sync_status,
+                collection_response.created_at,
+                collection_response.updated_at
+            )
+
+            # Create default subcollections if this is a root collection (no parent_id) and has a name
+            if not parent_id and name:
+                logger.info("Creating default subcollections for root collection id=%s", result["id"])
+                
+                # Create main subcollection
+                main_subcoll_name = os.getenv("R2R_MAIN_SUBCOLLECTION_NAME", "Class 1")
+                main_subcoll_desc = os.getenv("R2R_MAIN_SUBCOLLECTION_DESC", "Your first class for this course")
+                main_subcoll_theme = os.getenv("R2R_MAIN_SUBCOLLECTION_THEME", "#a855f7")
+                main_subcoll_icon = os.getenv("R2R_MAIN_SUBCOLLECTION_ICON", "Book")
+                
+                logger.info("Creating main subcollection with name=%s under parent_id=%s", main_subcoll_name, result["id"])
+                main_subcoll = await self.create_collection(
+                    owner_id=owner_id,
+                    name=main_subcoll_name,
+                    description=main_subcoll_desc,
+                    theme=main_subcoll_theme,
+                    icon=main_subcoll_icon,
+                    parent_id=collection_id
+                )
+                logger.info(
+                    "Created main subcollection: id=%s, name=%s, owner_id=%s, description=%s, theme=%s, icon=%s, parent_id=%s, graph_cluster_status=%s, graph_sync_status=%s, created_at=%s, updated_at=%s",
+                    main_subcoll.id,
+                    main_subcoll.name,
+                    main_subcoll.owner_id,
+                    main_subcoll.description,
+                    main_subcoll.theme,
+                    main_subcoll.icon,
+                    main_subcoll.parent_id,
+                    main_subcoll.graph_cluster_status,
+                    main_subcoll.graph_sync_status,
+                    main_subcoll.created_at,
+                    main_subcoll.updated_at
+                )
+
+                # Create standard subcollections under the main subcollection
+                subcollections_config = [
+                    {
+                        "name": os.getenv("R2R_TEXTBOOKS_NAME", "Textbooks"),
+                        "desc": os.getenv("R2R_TEXTBOOKS_DESC", "General documents collection"),
+                        "theme": os.getenv("R2R_TEXTBOOKS_THEME", "#a855f7"),
+                        "icon": os.getenv("R2R_TEXTBOOKS_ICON", "BookOpen")
+                    },
+                    {
+                        "name": os.getenv("R2R_ASSIGNMENTS_NAME", "Assignments"),
+                        "desc": os.getenv("R2R_ASSIGNMENTS_DESC", "Assignment instructions and solutions"),
+                        "theme": os.getenv("R2R_ASSIGNMENTS_THEME", "#a855f7"),
+                        "icon": os.getenv("R2R_ASSIGNMENTS_ICON", "ClipboardList")
+                    },
+                    {
+                        "name": os.getenv("R2R_NOTES_NAME", "Notes"),
+                        "desc": os.getenv("R2R_NOTES_DESC", "Class notes eg. written notes"),
+                        "theme": os.getenv("R2R_NOTES_THEME", "#a855f7"),
+                        "icon": os.getenv("R2R_NOTES_ICON", "Pencil")
+                    }
+                ]
+
+                for config in subcollections_config:
+                    logger.info("Creating standard subcollection with name=%s under parent_id=%s", config["name"], main_subcoll.id)
+                    subcoll = await self.create_collection(
+                        owner_id=owner_id,
+                        name=config["name"],
+                        description=config["desc"],
+                        theme=config["theme"],
+                        icon=config["icon"],
+                        parent_id=main_subcoll.id
+                    )
+                    logger.info(
+                        "Created standard subcollection: id=%s, name=%s, owner_id=%s, description=%s, theme=%s, icon=%s, parent_id=%s, graph_cluster_status=%s, graph_sync_status=%s, created_at=%s, updated_at=%s",
+                        subcoll.id,
+                        subcoll.name,
+                        subcoll.owner_id,
+                        subcoll.description,
+                        subcoll.theme,
+                        subcoll.icon,
+                        subcoll.parent_id,
+                        subcoll.graph_cluster_status,
+                        subcoll.graph_sync_status,
+                        subcoll.created_at,
+                        subcoll.updated_at
+                    )
+
+            return collection_response
         except UniqueViolationError:
+            logger.error("Failed to create collection - unique violation error for collection_id=%s", collection_id)
             raise R2RException(
                 message="Collection with this ID already exists",
                 status_code=409,
             ) from None
         except Exception as e:
+            logger.error("Failed to create collection: %s", str(e))
             raise HTTPException(
                 status_code=500,
                 detail=f"An error occurred while creating the collection: {e}",
@@ -180,10 +305,30 @@ class PostgresCollectionsHandler(Handler):
         collection_id: UUID,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        theme: Optional[str] = None,
+        icon: Optional[str] = None,
+        parent_id: Optional[UUID] = None,
     ) -> CollectionResponse:
         """Update an existing collection."""
         if not await self.collection_exists(collection_id):
             raise R2RException(status_code=404, message="Collection not found")
+
+        # Prevent circular parent references
+        if parent_id:
+            current = parent_id
+            visited = {collection_id}
+            while current:
+                if current in visited:
+                    raise R2RException(
+                        status_code=400,
+                        message="Circular parent reference detected"
+                    )
+                visited.add(current)
+                parent_result = await self.connection_manager.fetchrow_query(
+                    f"SELECT parent_id FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} WHERE id = $1",
+                    [current]
+                )
+                current = parent_result["parent_id"] if parent_result else None
 
         update_fields = []
         params: list = []
@@ -199,6 +344,21 @@ class PostgresCollectionsHandler(Handler):
             params.append(description)
             param_index += 1
 
+        if theme is not None:
+            update_fields.append(f"theme = ${param_index}")
+            params.append(theme)
+            param_index += 1
+
+        if icon is not None:
+            update_fields.append(f"icon = ${param_index}")
+            params.append(icon)
+            param_index += 1
+
+        if parent_id is not None:
+            update_fields.append(f"parent_id = ${param_index}")
+            params.append(parent_id)
+            param_index += 1
+
         if not update_fields:
             raise R2RException(status_code=400, message="No fields to update")
 
@@ -210,7 +370,7 @@ class PostgresCollectionsHandler(Handler):
                 UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
                 SET {", ".join(update_fields)}
                 WHERE id = ${param_index}
-                RETURNING id, owner_id, name, description, graph_sync_status, graph_cluster_status, created_at, updated_at
+                RETURNING id, owner_id, name, description, theme, icon, parent_id, graph_sync_status, graph_cluster_status, created_at, updated_at
             )
             SELECT
                 uc.*,
@@ -219,7 +379,7 @@ class PostgresCollectionsHandler(Handler):
             FROM updated_collection uc
             LEFT JOIN {self._get_table_name("users")} u ON uc.id = ANY(u.collection_ids)
             LEFT JOIN {self._get_table_name("documents")} d ON uc.id = ANY(d.collection_ids)
-            GROUP BY uc.id, uc.owner_id, uc.name, uc.description, uc.graph_sync_status, uc.graph_cluster_status, uc.created_at, uc.updated_at
+            GROUP BY uc.id, uc.owner_id, uc.name, uc.description, uc.theme, uc.icon, uc.parent_id, uc.graph_sync_status, uc.graph_cluster_status, uc.created_at, uc.updated_at
         """
         try:
             result = await self.connection_manager.fetchrow_query(
@@ -235,6 +395,9 @@ class PostgresCollectionsHandler(Handler):
                 owner_id=result["owner_id"],
                 name=result["name"],
                 description=result["description"],
+                theme=result["theme"],
+                icon=result["icon"],
+                parent_id=result["parent_id"],
                 graph_sync_status=result["graph_sync_status"],
                 graph_cluster_status=result["graph_cluster_status"],
                 created_at=result["created_at"],

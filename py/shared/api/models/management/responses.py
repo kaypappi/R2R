@@ -66,6 +66,9 @@ class CollectionResponse(BaseModel):
     owner_id: Optional[UUID]
     name: str
     description: Optional[str]
+    theme: Optional[str] = None
+    icon: Optional[str] = None
+    parent_id: Optional[UUID] = None
     graph_cluster_status: str
     graph_sync_status: str
     created_at: datetime

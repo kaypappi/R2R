@@ -12,9 +12,9 @@ collection_summary_prompt = "collection_summary"
 
 [app]
 project_name = "r2r_default"
-default_max_documents_per_user = 10_000
-default_max_chunks_per_user = 10_000_000
-default_max_collections_per_user = 5_000
+default_max_documents_per_user = 10000
+default_max_chunks_per_user = 10000000
+default_max_collections_per_user = 5000
 default_max_upload_size = 214748364800
 quality_llm = "ollama/llama3.1"
 fast_llm = "ollama/llama3.1"
@@ -24,7 +24,7 @@ audio_lm = "ollama/llama3.1"
 [agent]
 agent_static_prompt = "static_rag_agent"
 agent_dynamic_prompt = "dynamic_rag_agent"
-tools = ["local_search", "content"]
+tools = [ "local_search", "content",]
 
 [auth]
 provider = "r2r"
@@ -39,25 +39,8 @@ default_admin_password = "change_me_immediately"
 provider = "r2r"
 concurrent_request_limit = 64
 
-  [completion.generation_config]
-  temperature = 0.1
-  top_p = 1
-  max_tokens_to_sample = 4_096
-  stream = false
-  add_generation_kwargs = { }
-
 [crypto]
 provider = "bcrypt"
-
-  [database.graph_creation_settings]
-  graph_entity_description_prompt = "graph_entity_description"
-  graph_extraction_prompt = "graph_extraction"
-  entity_types = []
-  relation_types = []
-  automatic_deduplication = true
-
-  [database.graph_enrichment_settings]
-  graph_communities_prompt = "graph_communities"
 
 [embedding]
 provider = "ollama"
@@ -66,7 +49,6 @@ base_dimension = 1024
 batch_size = 128
 add_title_as_prefix = true
 concurrent_request_limit = 2
-quantization_settings = { quantization_type = "FP32" }
 
 [completion_embedding]
 provider = "ollama"
@@ -79,18 +61,10 @@ concurrent_request_limit = 2
 [ingestion]
 provider = "r2r"
 chunking_strategy = "recursive"
-chunk_size = 1_024
+chunk_size = 1024
 chunk_overlap = 512
-excluded_parsers = ["mp4"]
+excluded_parsers = [ "mp4",]
 automatic_extraction = true
-
-  [ingestion.chunk_enrichment_settings]
-  chunk_enrichment_prompt = "chunk_enrichment"
-  enable_chunk_enrichment = false
-  n_chunks = 2
-
-  [ingestion.extra_parsers]
-  pdf = "zerox"
 
 [logging]
 provider = "r2r"
@@ -101,4 +75,33 @@ log_info_table = "log_info"
 provider = "simple"
 
 [email]
-provider = "console_mock" 
+provider = "console_mock"
+
+[database.graph_creation_settings]
+graph_entity_description_prompt = "graph_entity_description"
+graph_extraction_prompt = "graph_extraction"
+entity_types = []
+relation_types = []
+automatic_deduplication = true
+
+[database.graph_enrichment_settings]
+graph_communities_prompt = "graph_communities"
+
+[completion.generation_config]
+temperature = 0.1
+top_p = 1
+max_tokens_to_sample = 4096
+stream = false
+
+[embedding.quantization_settings]
+quantization_type = "FP32"
+
+[ingestion.chunk_enrichment_settings]
+chunk_enrichment_prompt = "chunk_enrichment"
+enable_chunk_enrichment = false
+n_chunks = 2
+
+[ingestion.extra_parsers]
+pdf = "zerox"
+
+[completion.generation_config.add_generation_kwargs]

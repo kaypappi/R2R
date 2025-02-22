@@ -556,11 +556,15 @@ class ManagementService(Service):
         owner_id: UUID,
         name: Optional[str] = None,
         description: str = "",
+        theme: Optional[str] = None,
+        icon: Optional[str] = None,
     ) -> CollectionResponse:
         result = await self.providers.database.collections_handler.create_collection(
             owner_id=owner_id,
             name=name,
             description=description,
+            theme=theme,
+            icon=icon,
         )
         await self.providers.database.graphs_handler.create(
             collection_id=result.id,
