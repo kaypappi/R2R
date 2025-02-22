@@ -75,6 +75,11 @@ class CollectionResponse(BaseModel):
     updated_at: datetime
     user_count: int
     document_count: int
+    subcollections: Optional[list[UUID]] = None
+    subcollection_details: Optional[list['CollectionResponse']] = None
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 class ConversationResponse(BaseModel):

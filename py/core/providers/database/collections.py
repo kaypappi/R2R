@@ -188,6 +188,8 @@ class PostgresCollectionsHandler(Handler):
                 updated_at=result["updated_at"],
                 user_count=0,
                 document_count=0,
+                subcollections=[],
+                subcollection_details=[]
             )
             
             logger.info(
@@ -207,7 +209,7 @@ class PostgresCollectionsHandler(Handler):
 
             # Create default subcollections if this is a root collection (no parent_id) and has a name
             if not parent_id and name:
-                logger.info("Creating default subcollections for root collection id=%s", result["id"])
+                logger.info("Creating default subcollections for root collection id=%s", collection_response.id)
                 
                 # Create main subcollection
                 main_subcoll_name = os.getenv("R2R_MAIN_SUBCOLLECTION_NAME", "Class 1")
@@ -215,15 +217,19 @@ class PostgresCollectionsHandler(Handler):
                 main_subcoll_theme = os.getenv("R2R_MAIN_SUBCOLLECTION_THEME", "#a855f7")
                 main_subcoll_icon = os.getenv("R2R_MAIN_SUBCOLLECTION_ICON", "Book")
                 
-                logger.info("Creating main subcollection with name=%s under parent_id=%s", main_subcoll_name, result["id"])
+                logger.info("Creating main subcollection with name=%s under parent_id=%s", main_subcoll_name, collection_response.id)
                 main_subcoll = await self.create_collection(
                     owner_id=owner_id,
                     name=main_subcoll_name,
                     description=main_subcoll_desc,
                     theme=main_subcoll_theme,
                     icon=main_subcoll_icon,
-                    parent_id=collection_id
+                    parent_id=collection_response.id
                 )
+                
+                collection_response.subcollections.append(main_subcoll.id)
+                collection_response.subcollection_details.append(main_subcoll)
+                
                 logger.info(
                     "Created main subcollection: id=%s, name=%s, owner_id=%s, description=%s, theme=%s, icon=%s, parent_id=%s, graph_cluster_status=%s, graph_sync_status=%s, created_at=%s, updated_at=%s",
                     main_subcoll.id,
@@ -271,6 +277,10 @@ class PostgresCollectionsHandler(Handler):
                         icon=config["icon"],
                         parent_id=main_subcoll.id
                     )
+                    
+                    main_subcoll.subcollections.append(subcoll.id)
+                    main_subcoll.subcollection_details.append(subcoll)
+                    
                     logger.info(
                         "Created standard subcollection: id=%s, name=%s, owner_id=%s, description=%s, theme=%s, icon=%s, parent_id=%s, graph_cluster_status=%s, graph_sync_status=%s, created_at=%s, updated_at=%s",
                         subcoll.id,
