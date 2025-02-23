@@ -41,23 +41,33 @@ class PostgresCollectionsHandler(Handler):
         super().__init__(project_name, connection_manager)
 
     async def create_tables(self) -> None:
-        """Create the collections table if it does not exist."""
-        create_table = f"""
-        CREATE TABLE IF NOT EXISTS {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} (
-            id UUID PRIMARY KEY,
-            owner_id UUID,
-            name VARCHAR(255),
-            description TEXT,
-            theme VARCHAR(50),
-            icon VARCHAR(50),
-            parent_id UUID REFERENCES {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}(id),
-            graph_sync_status VARCHAR(50) DEFAULT 'NOT_STARTED',
-            graph_cluster_status VARCHAR(50) DEFAULT 'NOT_STARTED',
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
+        """Create the collections table if it doesn't exist."""
+        query = f"""
+            CREATE TABLE IF NOT EXISTS {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} (
+                id UUID PRIMARY KEY,
+                owner_id UUID NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                theme TEXT,
+                icon TEXT,
+                parent_id UUID REFERENCES {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}(id) ON DELETE CASCADE,
+                subcollections UUID[] DEFAULT ARRAY[]::UUID[],
+                graph_sync_status TEXT DEFAULT 'pending',
+                graph_cluster_status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT valid_parent CHECK (parent_id != id)
+            );
+
+            -- Create index on parent_id for faster hierarchy traversal
+            CREATE INDEX IF NOT EXISTS idx_{self.project_name}_collections_parent_id 
+            ON {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} (parent_id);
+
+            -- Create index on subcollections array for faster subcollection lookups
+            CREATE INDEX IF NOT EXISTS idx_{self.project_name}_collections_subcollections 
+            ON {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} USING GIN (subcollections);
         """
-        await self.connection_manager.execute_query(create_table)
+        await self.connection_manager.execute_query(query)
 
         # 2. Check for duplicate rows that would violate the uniqueness constraint.
         check_duplicates_query = f"""
@@ -193,18 +203,10 @@ class PostgresCollectionsHandler(Handler):
             )
             
             logger.info(
-                "Created collection: id=%s, name=%s, owner_id=%s, description=%s, theme=%s, icon=%s, parent_id=%s, graph_cluster_status=%s, graph_sync_status=%s, created_at=%s, updated_at=%s",
+                "Created collection: id=%s, name=%s, owner_id=%s",
                 collection_response.id,
                 collection_response.name,
                 collection_response.owner_id,
-                collection_response.description,
-                collection_response.theme,
-                collection_response.icon,
-                collection_response.parent_id,
-                collection_response.graph_cluster_status,
-                collection_response.graph_sync_status,
-                collection_response.created_at,
-                collection_response.updated_at
             )
 
             # Create default subcollections if this is a root collection (no parent_id) and has a name
@@ -227,22 +229,25 @@ class PostgresCollectionsHandler(Handler):
                     parent_id=collection_response.id
                 )
                 
+                # Add main subcollection to parent's subcollections
                 collection_response.subcollections.append(main_subcoll.id)
                 collection_response.subcollection_details.append(main_subcoll)
                 
+                # Update parent collection in database with new subcollection
+                update_query = f"""
+                    UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
+                    SET subcollections = array_append(subcollections, $1)
+                    WHERE id = $2
+                """
+                await self.connection_manager.execute_query(
+                    update_query,
+                    [main_subcoll.id, collection_response.id]
+                )
+                
                 logger.info(
-                    "Created main subcollection: id=%s, name=%s, owner_id=%s, description=%s, theme=%s, icon=%s, parent_id=%s, graph_cluster_status=%s, graph_sync_status=%s, created_at=%s, updated_at=%s",
+                    "Created main subcollection: id=%s, name=%s",
                     main_subcoll.id,
-                    main_subcoll.name,
-                    main_subcoll.owner_id,
-                    main_subcoll.description,
-                    main_subcoll.theme,
-                    main_subcoll.icon,
-                    main_subcoll.parent_id,
-                    main_subcoll.graph_cluster_status,
-                    main_subcoll.graph_sync_status,
-                    main_subcoll.created_at,
-                    main_subcoll.updated_at
+                    main_subcoll.name
                 )
 
                 # Create standard subcollections under the main subcollection
@@ -278,25 +283,24 @@ class PostgresCollectionsHandler(Handler):
                         parent_id=main_subcoll.id
                     )
                     
+                    # Add subcollection to main subcollection's subcollections
                     main_subcoll.subcollections.append(subcoll.id)
                     main_subcoll.subcollection_details.append(subcoll)
                     
+                    # Update main subcollection in database with new subcollection
+                    await self.connection_manager.execute_query(
+                        update_query,
+                        [subcoll.id, main_subcoll.id]
+                    )
+                    
                     logger.info(
-                        "Created standard subcollection: id=%s, name=%s, owner_id=%s, description=%s, theme=%s, icon=%s, parent_id=%s, graph_cluster_status=%s, graph_sync_status=%s, created_at=%s, updated_at=%s",
+                        "Created standard subcollection: id=%s, name=%s",
                         subcoll.id,
-                        subcoll.name,
-                        subcoll.owner_id,
-                        subcoll.description,
-                        subcoll.theme,
-                        subcoll.icon,
-                        subcoll.parent_id,
-                        subcoll.graph_cluster_status,
-                        subcoll.graph_sync_status,
-                        subcoll.created_at,
-                        subcoll.updated_at
+                        subcoll.name
                     )
 
             return collection_response
+
         except UniqueViolationError:
             logger.error("Failed to create collection - unique violation error for collection_id=%s", collection_id)
             raise R2RException(
@@ -531,7 +535,7 @@ class PostgresCollectionsHandler(Handler):
             conditions.append(f"""
                 c.id IN (
                     SELECT unnest(collection_ids)
-                    FROM {self.project_name}.users
+                    FROM {self._get_table_name("users")}
                     WHERE id = ANY(${param_index})
                 )
             """)
@@ -542,7 +546,7 @@ class PostgresCollectionsHandler(Handler):
             conditions.append(f"""
                 c.id IN (
                     SELECT unnest(collection_ids)
-                    FROM {self.project_name}.documents
+                    FROM {self._get_table_name("documents")}
                     WHERE id = ANY(${param_index})
                 )
             """)
@@ -558,33 +562,83 @@ class PostgresCollectionsHandler(Handler):
             f"WHERE {' AND '.join(conditions)}" if conditions else ""
         )
 
-        query = f"""
-            SELECT
+        # Get root collections first
+        root_collections_query = f"""
+            SELECT 
                 c.*,
-                COUNT(*) OVER() as total_entries
-            FROM {self.project_name}.collections c
-            {where_clause}
-            ORDER BY created_at DESC
-            OFFSET ${param_index}
+                COUNT(DISTINCT u.id) FILTER (WHERE u.id IS NOT NULL) as user_count,
+                COUNT(DISTINCT d.id) FILTER (WHERE d.id IS NOT NULL) as document_count
+            FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
+            LEFT JOIN {self._get_table_name("users")} u ON c.id = ANY(u.collection_ids)
+            LEFT JOIN {self._get_table_name("documents")} d ON c.id = ANY(d.collection_ids)
+            WHERE c.parent_id IS NULL
+            {f'AND {" AND ".join(conditions)}' if conditions else ''}
+            GROUP BY c.id, c.owner_id, c.name, c.description, c.theme, c.icon, 
+                     c.parent_id, c.graph_sync_status, c.graph_cluster_status, 
+                     c.created_at, c.updated_at
+            ORDER BY c.created_at DESC
         """
-        params.append(offset)
-        param_index += 1
-
-        if limit != -1:
-            query += f" LIMIT ${param_index}"
-            params.append(limit)
 
         try:
-            results = await self.connection_manager.fetch_query(query, params)
-
-            if not results:
+            root_results = await self.connection_manager.fetch_query(root_collections_query, params)
+            
+            if not root_results:
                 return {"results": [], "total_entries": 0}
 
-            total_entries = results[0]["total_entries"] if results else 0
+            async def get_collection_details(collection_id: UUID) -> CollectionResponse:
+                # Get collection details including counts
+                query = f"""
+                    SELECT 
+                        c.*,
+                        COUNT(DISTINCT u.id) FILTER (WHERE u.id IS NOT NULL) as user_count,
+                        COUNT(DISTINCT d.id) FILTER (WHERE d.id IS NOT NULL) as document_count
+                    FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
+                    LEFT JOIN {self._get_table_name("users")} u ON c.id = ANY(u.collection_ids)
+                    LEFT JOIN {self._get_table_name("documents")} d ON c.id = ANY(d.collection_ids)
+                    WHERE c.id = $1
+                    GROUP BY c.id, c.owner_id, c.name, c.description, c.theme, c.icon, 
+                             c.parent_id, c.graph_sync_status, c.graph_cluster_status, 
+                             c.created_at, c.updated_at
+                """
+                result = await self.connection_manager.fetchrow_query(query, [collection_id])
+                
+                collection = CollectionResponse(
+                    id=result["id"],
+                    owner_id=result["owner_id"],
+                    name=result["name"],
+                    description=result["description"],
+                    theme=result["theme"],
+                    icon=result["icon"],
+                    parent_id=result["parent_id"],
+                    graph_sync_status=result["graph_sync_status"],
+                    graph_cluster_status=result["graph_cluster_status"],
+                    created_at=result["created_at"],
+                    updated_at=result["updated_at"],
+                    user_count=result["user_count"],
+                    document_count=result["document_count"],
+                    subcollections=result.get("subcollections", []) or [],
+                    subcollection_details=[]
+                )
+                
+                # Recursively get subcollection details
+                for subcoll_id in collection.subcollections:
+                    subcoll = await get_collection_details(subcoll_id)
+                    collection.subcollection_details.append(subcoll)
+                
+                return collection
 
-            collections = [CollectionResponse(**row) for row in results]
+            # Build collection hierarchy for root collections
+            root_collections = []
+            for row in root_results:
+                collection = await get_collection_details(row["id"])
+                root_collections.append(collection)
 
-            return {"results": collections, "total_entries": total_entries}
+            # Apply pagination to root collections
+            paginated_roots = root_collections[offset:offset + limit] if limit != -1 else root_collections[offset:]
+            total_entries = len(root_collections)
+
+            return {"results": paginated_roots, "total_entries": total_entries}
+            
         except Exception as e:
             raise HTTPException(
                 status_code=500,
@@ -845,30 +899,79 @@ class PostgresCollectionsHandler(Handler):
         Return None if not found.
         """
         query = f"""
-            SELECT
-                id, owner_id, name, description, graph_sync_status,
-                graph_cluster_status, created_at, updated_at, user_count, document_count
-            FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-            WHERE owner_id = $1 AND name = $2
-            LIMIT 1
+            WITH RECURSIVE collection_tree AS (
+                -- Base case: get the requested collection
+                SELECT 
+                    c.*,
+                    ARRAY[]::uuid[] as subcollections,
+                    0 as level
+                FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
+                WHERE c.owner_id = $1 AND c.name = $2
+                
+                UNION ALL
+                
+                -- Recursive case: get child collections
+                SELECT 
+                    c.*,
+                    ARRAY[]::uuid[] as subcollections,
+                    ct.level + 1
+                FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
+                JOIN collection_tree ct ON c.parent_id = ct.id
+            )
+            SELECT 
+                ct.*,
+                COUNT(DISTINCT u.id) FILTER (WHERE u.id IS NOT NULL) as user_count,
+                COUNT(DISTINCT d.id) FILTER (WHERE d.id IS NOT NULL) as document_count
+            FROM collection_tree ct
+            LEFT JOIN {self._get_table_name("users")} u ON ct.id = ANY(u.collection_ids)
+            LEFT JOIN {self._get_table_name("documents")} d ON ct.id = ANY(d.collection_ids)
+            GROUP BY ct.id, ct.owner_id, ct.name, ct.description, ct.theme, ct.icon, 
+                     ct.parent_id, ct.graph_sync_status, ct.graph_cluster_status, 
+                     ct.created_at, ct.updated_at, ct.subcollections, ct.level
+            ORDER BY ct.level ASC
         """
-        result = await self.connection_manager.fetchrow_query(
-            query, [owner_id, name]
-        )
-        if not result:
+        
+        results = await self.connection_manager.fetch_query(query, [owner_id, name])
+        
+        if not results:
             raise R2RException(
                 status_code=404,
                 message="No collection found with the specified name",
             )
-        return CollectionResponse(
-            id=result["id"],
-            owner_id=result["owner_id"],
-            name=result["name"],
-            description=result["description"],
-            graph_sync_status=result["graph_sync_status"],
-            graph_cluster_status=result["graph_cluster_status"],
-            created_at=result["created_at"],
-            updated_at=result["updated_at"],
-            user_count=result["user_count"],
-            document_count=result["document_count"],
-        )
+            
+        # Build collection hierarchy
+        collections_by_id = {}
+        root_collection = None
+        
+        # First pass: Create CollectionResponse objects
+        for row in results:
+            collection = CollectionResponse(
+                id=row["id"],
+                owner_id=row["owner_id"],
+                name=row["name"],
+                description=row["description"],
+                theme=row["theme"],
+                icon=row["icon"],
+                parent_id=row["parent_id"],
+                graph_sync_status=row["graph_sync_status"],
+                graph_cluster_status=row["graph_cluster_status"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                user_count=row["user_count"],
+                document_count=row["document_count"],
+                subcollections=[],
+                subcollection_details=[]
+            )
+            collections_by_id[row["id"]] = collection
+            if row["level"] == 0:  # This is our requested collection
+                root_collection = collection
+
+        # Second pass: Build hierarchy
+        for collection in collections_by_id.values():
+            if collection.parent_id:
+                parent = collections_by_id.get(collection.parent_id)
+                if parent:
+                    parent.subcollections.append(collection.id)
+                    parent.subcollection_details.append(collection)
+
+        return root_collection

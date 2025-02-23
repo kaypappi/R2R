@@ -23,25 +23,59 @@ def test_document_2(client: R2RClient):
 
 
 def test_create_collection(client: R2RClient):
-    collection_id = client.collections.create(name="Test Collection Creation",
-                                              description="Desc").results.id
-    assert collection_id is not None, "No collection_id returned"
+    response = client.collections.create(
+        name="Test Collection Creation",
+        description="Desc"
+    ).results
+    
+    assert response.id is not None, "No collection_id returned"
+    assert response.name == "Test Collection Creation"
+    assert response.description == "Desc"
+    assert response.theme == "#a855f7"  # Default theme
+    assert response.icon == "Book"  # Default icon
+    
+    # Verify subcollections
+    assert response.subcollections is not None
+    assert len(response.subcollections) == 1  # Main subcollection
+    assert response.subcollection_details is not None
+    assert len(response.subcollection_details) == 1
+    
+    # Verify main subcollection
+    main_subcoll = response.subcollection_details[0]
+    assert main_subcoll.name == "Class 1"
+    assert main_subcoll.parent_id == response.id
+    assert main_subcoll.subcollections is not None
+    assert len(main_subcoll.subcollections) == 3  # Standard subcollections
+    assert main_subcoll.subcollection_details is not None
+    assert len(main_subcoll.subcollection_details) == 3
+    
+    # Verify standard subcollections
+    subcoll_names = {sc.name for sc in main_subcoll.subcollection_details}
+    assert subcoll_names == {"Textbooks", "Assignments", "Notes"}
+    for subcoll in main_subcoll.subcollection_details:
+        assert subcoll.parent_id == main_subcoll.id
 
     # Cleanup
-    client.collections.delete(collection_id)
+    client.collections.delete(response.id)
 
 
 def test_list_collections(client: R2RClient, test_collection):
     results = client.collections.list(limit=10, offset=0).results
     assert len(results) >= 1, "Expected at least one collection, none found"
+    
+    # Verify collection response format
+    collection = next(c for c in results if c.id == test_collection["collection_id"])
+    assert collection.subcollections is not None
+    assert collection.subcollection_details is not None
 
 
 def test_retrieve_collection(client: R2RClient, test_collection):
     # Retrieve the collection just created
     retrieved = client.collections.retrieve(
         test_collection["collection_id"]).results
-    assert retrieved.id == test_collection["collection_id"], (
-        "Retrieved wrong collection ID")
+    assert retrieved.id == test_collection["collection_id"]
+    assert retrieved.subcollections is not None
+    assert retrieved.subcollection_details is not None
 
 
 def test_update_collection(client: R2RClient, test_collection):
@@ -362,3 +396,26 @@ async def test_default_theme_and_icon(client: R2RClient):
     
     assert collection.theme == os.getenv("R2R_DEFAULT_COLLECTION_THEME", "#a855f7")
     assert collection.icon == os.getenv("R2R_DEFAULT_COLLECTION_ICON", "Book")
+
+
+def test_create_collection_with_parent(client: R2RClient):
+    # Create parent collection
+    parent = client.collections.create(
+        name="Parent Collection",
+        description="Parent collection"
+    ).results
+    
+    # Create child collection
+    child = client.collections.create(
+        name="Child Collection",
+        description="Child collection",
+        parent_id=parent.id
+    ).results
+    
+    assert child.parent_id == parent.id
+    assert child.subcollections == []  # No subcollections for child collection
+    assert child.subcollection_details == []
+    
+    # Cleanup
+    client.collections.delete(child.id)
+    client.collections.delete(parent.id)
