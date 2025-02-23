@@ -633,13 +633,14 @@ class PostgresChunksHandler(Handler):
     async def assign_document_chunks_to_collection(
         self, document_id: UUID, collection_id: UUID
     ) -> None:
+        """Assign all chunks from a document to a collection."""
         query = f"""
         UPDATE {self._get_table_name(PostgresChunksHandler.TABLE_NAME)}
-        SET collection_ids = array_append(collection_ids, $1)
-        WHERE document_id = $2 AND NOT ($1 = ANY(collection_ids));
+        SET collection_ids = array_append(collection_ids, $1::uuid)
+        WHERE document_id = $2::uuid AND NOT ($1::uuid = ANY(collection_ids));
         """
-        return await self.connection_manager.execute_query(
-            query, (str(collection_id), str(document_id))
+        await self.connection_manager.execute_query(
+            query, [collection_id, document_id]
         )
 
     async def remove_document_from_collection_vector(

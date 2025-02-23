@@ -243,9 +243,13 @@ class IngestionService:
 
             file_name, file_wrapper, file_size = retrieved
 
-            # Read the content
-            with file_wrapper as file_content_stream:
-                file_content = file_content_stream.read()
+            # For DOCX files, we need to maintain the binary content
+            if document_info.document_type == DocumentType.DOCX:
+                file_content = file_wrapper.read()
+            else:
+                # Read the content as before for other file types
+                with file_wrapper as file_content_stream:
+                    file_content = file_content_stream.read()
 
             # Build a barebones Document object
             doc = Document(

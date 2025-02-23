@@ -620,16 +620,14 @@ class PostgresCollectionsHandler(Handler):
         root_collections_query = f"""
             SELECT 
                 c.*,
-                COUNT(DISTINCT u.id) FILTER (WHERE u.id IS NOT NULL) as user_count,
-                COUNT(DISTINCT d.id) FILTER (WHERE d.id IS NOT NULL) as document_count
+                COUNT(DISTINCT u.id) FILTER (WHERE u.id IS NOT NULL) as user_count
             FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
             LEFT JOIN {self._get_table_name("users")} u ON c.id = ANY(u.collection_ids)
-            LEFT JOIN {self._get_table_name("documents")} d ON c.id = ANY(d.collection_ids)
             WHERE c.parent_id IS NULL
             {f'AND {" AND ".join(conditions)}' if conditions else ''}
             GROUP BY c.id, c.owner_id, c.name, c.description, c.theme, c.icon, 
                      c.parent_id, c.graph_sync_status, c.graph_cluster_status, 
-                     c.created_at, c.updated_at
+                     c.created_at, c.updated_at, c.document_count
             ORDER BY c.created_at DESC
         """
 
@@ -644,15 +642,13 @@ class PostgresCollectionsHandler(Handler):
                 query = f"""
                     SELECT 
                         c.*,
-                        COUNT(DISTINCT u.id) FILTER (WHERE u.id IS NOT NULL) as user_count,
-                        COUNT(DISTINCT d.id) FILTER (WHERE d.id IS NOT NULL) as document_count
+                        COUNT(DISTINCT u.id) FILTER (WHERE u.id IS NOT NULL) as user_count
                     FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
                     LEFT JOIN {self._get_table_name("users")} u ON c.id = ANY(u.collection_ids)
-                    LEFT JOIN {self._get_table_name("documents")} d ON c.id = ANY(d.collection_ids)
                     WHERE c.id = $1
                     GROUP BY c.id, c.owner_id, c.name, c.description, c.theme, c.icon, 
                              c.parent_id, c.graph_sync_status, c.graph_cluster_status, 
-                             c.created_at, c.updated_at
+                             c.created_at, c.updated_at, c.document_count
                 """
                 result = await self.connection_manager.fetchrow_query(query, [collection_id])
                 
@@ -698,6 +694,41 @@ class PostgresCollectionsHandler(Handler):
                 status_code=500,
                 detail=f"An error occurred while fetching collections: {e}",
             ) from e
+
+    async def update_document_count_recursively(
+        self,
+        collection_id: UUID,
+        increment: bool = True,
+        change_amount: int = 1
+    ) -> None:
+        """Update document count for a collection and all its ancestors.
+
+        Args:
+            collection_id (UUID): The ID of the collection to start updating from
+            increment (bool): True to increment, False to decrement
+            change_amount (int): Amount to change the count by (default: 1)
+        """
+        query = f"""
+            WITH RECURSIVE collection_hierarchy AS (
+                -- Base case: start with the given collection
+                SELECT id, parent_id
+                FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
+                WHERE id = $1::uuid
+
+                UNION
+
+                -- Recursive case: get all ancestors
+                SELECT c.id, c.parent_id
+                FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
+                INNER JOIN collection_hierarchy ch ON ch.parent_id = c.id
+            )
+            UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
+            SET document_count = document_count {'+' if increment else '-'} $2
+            WHERE c.id IN (SELECT id FROM collection_hierarchy)
+        """
+        await self.connection_manager.execute_query(
+            query, [str(collection_id), change_amount]
+        )
 
     async def assign_document_to_collection_relational(
         self,
@@ -754,15 +785,8 @@ class PostgresCollectionsHandler(Handler):
                     message="Document is already assigned to the collection",
                 )
 
-            # Update collection document count
-            update_collection_query = f"""
-                UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-                SET document_count = document_count + 1
-                WHERE id = $1::uuid
-            """
-            await self.connection_manager.execute_query(
-                update_collection_query, [str(collection_id)]
-            )
+            # Update document count recursively for the collection and its ancestors
+            await self.update_document_count_recursively(collection_id, increment=True)
 
             return collection_id
 
@@ -808,9 +832,8 @@ class PostgresCollectionsHandler(Handler):
                 message="Document not found in the specified collection",
             )
 
-        await self.decrement_collection_document_count(
-            collection_id=collection_id
-        )
+        # Update document count recursively for the collection and its ancestors
+        await self.update_document_count_recursively(collection_id, increment=False)
 
     async def decrement_collection_document_count(
         self, collection_id: UUID, decrement_by: int = 1
