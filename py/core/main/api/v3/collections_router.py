@@ -55,16 +55,12 @@ async def authorize_collection_action(
     if auth_user.is_superuser:
         return True
 
-    # Fetch collection details: owner_id and members
-    results = (
-        await services.management.collections_overview(
-            0, 1, collection_ids=[collection_id]
-        )
-    )["results"]
-    if len(results) == 0:
+    # Fetch collection details using get_collection_by_id
+    collection = await services.management.providers.database.collections_handler.get_collection_by_id(collection_id)
+    if not collection:
         raise R2RException("The specified collection does not exist.", 404)
-    details = results[0]
-    owner_id = details.owner_id
+    
+    owner_id = collection.owner_id
 
     # Check if user is owner
     if auth_user.id == owner_id:

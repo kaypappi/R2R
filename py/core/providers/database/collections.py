@@ -158,19 +158,21 @@ class PostgresCollectionsHandler(Handler):
 
         query = f"""
             INSERT INTO {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-            (id, owner_id, name, description, theme, icon, parent_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, owner_id, name, description, theme, icon, parent_id, graph_sync_status, graph_cluster_status, created_at, updated_at
+            (id, owner_id, name, description, theme, icon, parent_id, subcollections)
+            VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::uuid, $8::uuid[])
+            RETURNING id, owner_id, name, description, theme, icon, parent_id, subcollections,
+                      graph_sync_status, graph_cluster_status, created_at, updated_at
         """
         collection_id = collection_id or uuid4()
         params = [
-            collection_id,
-            owner_id,
+            str(collection_id),
+            str(owner_id),
             name,
             description,
             theme,
             icon,
-            parent_id,
+            str(parent_id) if parent_id else None,
+            [],  # Initialize empty subcollections array
         ]
 
         try:
@@ -184,34 +186,24 @@ class PostgresCollectionsHandler(Handler):
                     status_code=404, message="Collection not found"
                 )
 
-            collection_response = CollectionResponse(
-                id=result["id"],
-                owner_id=result["owner_id"],
-                name=result["name"],
-                description=result["description"],
-                theme=result["theme"],
-                icon=result["icon"],
-                parent_id=result["parent_id"],
-                graph_cluster_status=result["graph_cluster_status"],
-                graph_sync_status=result["graph_sync_status"],
-                created_at=result["created_at"],
-                updated_at=result["updated_at"],
-                user_count=0,
-                document_count=0,
-                subcollections=[],
-                subcollection_details=[]
-            )
+            # Get the complete collection details using get_collection_by_id
+            collection = await self.get_collection_by_id(collection_id)
+            if not collection:
+                logger.error("Failed to retrieve created collection details")
+                raise R2RException(
+                    status_code=404, message="Collection not found"
+                )
             
             logger.info(
                 "Created collection: id=%s, name=%s, owner_id=%s",
-                collection_response.id,
-                collection_response.name,
-                collection_response.owner_id,
+                collection.id,
+                collection.name,
+                collection.owner_id,
             )
 
             # Create default subcollections if this is a root collection (no parent_id) and has a name
             if not parent_id and name:
-                logger.info("Creating default subcollections for root collection id=%s", collection_response.id)
+                logger.info("Creating default subcollections for root collection id=%s", collection.id)
                 
                 # Create main subcollection
                 main_subcoll_name = os.getenv("R2R_MAIN_SUBCOLLECTION_NAME", "Class 1")
@@ -219,29 +211,26 @@ class PostgresCollectionsHandler(Handler):
                 main_subcoll_theme = os.getenv("R2R_MAIN_SUBCOLLECTION_THEME", "#a855f7")
                 main_subcoll_icon = os.getenv("R2R_MAIN_SUBCOLLECTION_ICON", "Book")
                 
-                logger.info("Creating main subcollection with name=%s under parent_id=%s", main_subcoll_name, collection_response.id)
+                logger.info("Creating main subcollection with name=%s under parent_id=%s", main_subcoll_name, collection.id)
                 main_subcoll = await self.create_collection(
                     owner_id=owner_id,
                     name=main_subcoll_name,
                     description=main_subcoll_desc,
                     theme=main_subcoll_theme,
                     icon=main_subcoll_icon,
-                    parent_id=collection_response.id
+                    parent_id=collection.id
                 )
                 
-                # Add main subcollection to parent's subcollections
-                collection_response.subcollections.append(main_subcoll.id)
-                collection_response.subcollection_details.append(main_subcoll)
-                
-                # Update parent collection in database with new subcollection
+                # Add main subcollection to parent's subcollections array
                 update_query = f"""
                     UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-                    SET subcollections = array_append(subcollections, $1)
-                    WHERE id = $2
+                    SET subcollections = array_append(subcollections, $1::uuid)
+                    WHERE id = $2::uuid
+                    RETURNING id
                 """
                 await self.connection_manager.execute_query(
                     update_query,
-                    [main_subcoll.id, collection_response.id]
+                    [str(main_subcoll.id), str(collection.id)]
                 )
                 
                 logger.info(
@@ -283,14 +272,10 @@ class PostgresCollectionsHandler(Handler):
                         parent_id=main_subcoll.id
                     )
                     
-                    # Add subcollection to main subcollection's subcollections
-                    main_subcoll.subcollections.append(subcoll.id)
-                    main_subcoll.subcollection_details.append(subcoll)
-                    
-                    # Update main subcollection in database with new subcollection
+                    # Add subcollection to main subcollection's subcollections array
                     await self.connection_manager.execute_query(
                         update_query,
-                        [subcoll.id, main_subcoll.id]
+                        [str(subcoll.id), str(main_subcoll.id)]
                     )
                     
                     logger.info(
@@ -299,7 +284,15 @@ class PostgresCollectionsHandler(Handler):
                         subcoll.name
                     )
 
-            return collection_response
+            # Get the final collection details with all subcollections
+            final_collection = await self.get_collection_by_id(collection_id)
+            if not final_collection:
+                logger.error("Failed to retrieve final collection details")
+                raise R2RException(
+                    status_code=404, message="Collection not found"
+                )
+
+            return final_collection
 
         except UniqueViolationError:
             logger.error("Failed to create collection - unique violation error for collection_id=%s", collection_id)
@@ -463,6 +456,65 @@ class PostgresCollectionsHandler(Handler):
         if not deleted:
             raise R2RException(status_code=404, message="Collection not found")
 
+    async def get_collection_by_id(self, collection_id: UUID) -> Optional[CollectionResponse]:
+        """Fetch a collection by its UUID.
+        
+        Args:
+            collection_id (UUID): The UUID of the collection to retrieve
+            
+        Returns:
+            Optional[CollectionResponse]: The collection if found, None otherwise
+        """
+        query = f"""
+            WITH RECURSIVE collection_tree AS (
+                -- Base case: get the requested collection
+                SELECT 
+                    c.*,
+                    COUNT(DISTINCT u.id) FILTER (WHERE u.id IS NOT NULL) as user_count,
+                    COUNT(DISTINCT d.id) FILTER (WHERE d.id IS NOT NULL) as document_count
+                FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)} c
+                LEFT JOIN {self._get_table_name("users")} u ON c.id = ANY(u.collection_ids)
+                LEFT JOIN {self._get_table_name("documents")} d ON c.id = ANY(d.collection_ids)
+                WHERE c.id = $1::uuid
+                GROUP BY c.id, c.owner_id, c.name, c.description, c.theme, c.icon, 
+                         c.parent_id, c.graph_sync_status, c.graph_cluster_status, 
+                         c.created_at, c.updated_at, c.subcollections
+            )
+            SELECT * FROM collection_tree
+        """
+        
+        result = await self.connection_manager.fetchrow_query(query, [str(collection_id)])
+        
+        if not result:
+            return None
+            
+        collection = CollectionResponse(
+            id=result["id"],
+            owner_id=result["owner_id"],
+            name=result["name"],
+            description=result["description"],
+            theme=result["theme"],
+            icon=result["icon"],
+            parent_id=result["parent_id"],
+            graph_sync_status=result["graph_sync_status"],
+            graph_cluster_status=result["graph_cluster_status"],
+            created_at=result["created_at"],
+            updated_at=result["updated_at"],
+            user_count=result["user_count"],
+            document_count=result["document_count"],
+            subcollections=result.get("subcollections", []) or [],
+            subcollection_details=[]
+        )
+        
+        # Fetch subcollection details if there are any
+        if collection.subcollections:
+            for subcoll_id in collection.subcollections:
+                subcoll = await self.get_collection_by_id(subcoll_id)
+                if subcoll:
+                    collection.subcollection_details.append(subcoll)
+        
+        return collection
+
     async def documents_in_collection(
         self, collection_id: UUID, offset: int, limit: int
     ) -> dict[str, list[DocumentResponse] | int]:
@@ -477,19 +529,21 @@ class PostgresCollectionsHandler(Handler):
         Raises:
             R2RException: If the collection doesn't exist.
         """
-        if not await self.collection_exists(collection_id):
+        collection = await self.get_collection_by_id(collection_id)
+        if not collection:
             raise R2RException(status_code=404, message="Collection not found")
+
         query = f"""
             SELECT d.id, d.owner_id, d.type, d.metadata, d.title, d.version,
                 d.size_in_bytes, d.ingestion_status, d.extraction_status, d.created_at, d.updated_at, d.summary,
                 COUNT(*) OVER() AS total_entries
             FROM {self._get_table_name("documents")} d
-            WHERE $1 = ANY(d.collection_ids)
+            WHERE $1::uuid = ANY(d.collection_ids)
             ORDER BY d.created_at DESC
             OFFSET $2
         """
 
-        conditions = [collection_id, offset]
+        conditions = [str(collection_id), offset]
         if limit != -1:
             query += " LIMIT $3"
             conditions.append(limit)
@@ -661,7 +715,9 @@ class PostgresCollectionsHandler(Handler):
                         or if there's a database error.
         """
         try:
-            if not await self.collection_exists(collection_id):
+            # Check if collection exists using get_collection_by_id
+            collection = await self.get_collection_by_id(collection_id)
+            if not collection:
                 raise R2RException(
                     status_code=404, message="Collection not found"
                 )
@@ -669,10 +725,10 @@ class PostgresCollectionsHandler(Handler):
             # First, check if the document exists
             document_check_query = f"""
                 SELECT 1 FROM {self._get_table_name("documents")}
-                WHERE id = $1
+                WHERE id = $1::uuid
             """
             document_exists = await self.connection_manager.fetchrow_query(
-                document_check_query, [document_id]
+                document_check_query, [str(document_id)]
             )
 
             if not document_exists:
@@ -683,12 +739,12 @@ class PostgresCollectionsHandler(Handler):
             # If document exists, proceed with the assignment
             assign_query = f"""
                 UPDATE {self._get_table_name("documents")}
-                SET collection_ids = array_append(collection_ids, $1)
-                WHERE id = $2 AND NOT ($1 = ANY(collection_ids))
+                SET collection_ids = array_append(collection_ids, $1::uuid)
+                WHERE id = $2::uuid AND NOT ($1::uuid = ANY(collection_ids))
                 RETURNING id
             """
             result = await self.connection_manager.fetchrow_query(
-                assign_query, [collection_id, document_id]
+                assign_query, [str(collection_id), str(document_id)]
             )
 
             if not result:
@@ -698,13 +754,14 @@ class PostgresCollectionsHandler(Handler):
                     message="Document is already assigned to the collection",
                 )
 
+            # Update collection document count
             update_collection_query = f"""
-                UPDATE {self._get_table_name("collections")}
+                UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
                 SET document_count = document_count + 1
-                WHERE id = $1
+                WHERE id = $1::uuid
             """
             await self.connection_manager.execute_query(
-                query=update_collection_query, params=[collection_id]
+                update_collection_query, [str(collection_id)]
             )
 
             return collection_id
@@ -715,7 +772,7 @@ class PostgresCollectionsHandler(Handler):
         except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"An error '{e}' occurred while assigning the document to the collection",
+                detail=f"An error occurred while assigning the document to the collection: {e}",
             ) from e
 
     async def remove_document_from_collection_relational(
@@ -730,17 +787,19 @@ class PostgresCollectionsHandler(Handler):
         Raises:
             R2RException: If the collection doesn't exist or if the document is not in the collection.
         """
-        if not await self.collection_exists(collection_id):
+        # Check if collection exists using get_collection_by_id
+        collection = await self.get_collection_by_id(collection_id)
+        if not collection:
             raise R2RException(status_code=404, message="Collection not found")
 
         query = f"""
             UPDATE {self._get_table_name("documents")}
-            SET collection_ids = array_remove(collection_ids, $1)
-            WHERE id = $2 AND $1 = ANY(collection_ids)
+            SET collection_ids = array_remove(collection_ids, $1::uuid)
+            WHERE id = $2::uuid AND $1::uuid = ANY(collection_ids)
             RETURNING id
         """
         result = await self.connection_manager.fetchrow_query(
-            query, [collection_id, document_id]
+            query, [str(collection_id), str(document_id)]
         )
 
         if not result:
@@ -763,12 +822,12 @@ class PostgresCollectionsHandler(Handler):
             decrement_by (int): Number to decrease the count by (default: 1)
         """
         collection_query = f"""
-            UPDATE {self._get_table_name("collections")}
+            UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
             SET document_count = document_count - $1
-            WHERE id = $2
+            WHERE id = $2::uuid
         """
         await self.connection_manager.execute_query(
-            collection_query, [decrement_by, collection_id]
+            collection_query, [decrement_by, str(collection_id)]
         )
 
     async def export_to_csv(
