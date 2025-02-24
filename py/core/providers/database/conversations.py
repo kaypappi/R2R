@@ -50,7 +50,9 @@ class PostgresConversationsHandler(Handler):
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             user_id UUID,
             created_at TIMESTAMPTZ DEFAULT NOW(),
-            name TEXT
+            name TEXT,
+            collection_id UUID,
+            type TEXT DEFAULT 'Chat'
         );
         """
 
@@ -73,15 +75,17 @@ class PostgresConversationsHandler(Handler):
         self,
         user_id: Optional[UUID] = None,
         name: Optional[str] = None,
+        collection_id: Optional[UUID] = None,
+        type: str = "Chat",
     ) -> ConversationResponse:
         query = f"""
-            INSERT INTO {self._get_table_name("conversations")} (user_id, name)
-            VALUES ($1, $2)
+            INSERT INTO {self._get_table_name("conversations")} (user_id, name, collection_id, type)
+            VALUES ($1, $2, $3, $4)
             RETURNING id, extract(epoch from created_at) as created_at_epoch
         """
         try:
             result = await self.connection_manager.fetchrow_query(
-                query, [user_id, name]
+                query, [user_id, name, collection_id, type]
             )
 
             return ConversationResponse(
@@ -89,6 +93,8 @@ class PostgresConversationsHandler(Handler):
                 created_at=result["created_at_epoch"],
                 user_id=user_id or None,
                 name=name or None,
+                collection_id=collection_id or None,
+                type=type,
             )
         except Exception as e:
             raise HTTPException(
@@ -132,7 +138,9 @@ class PostgresConversationsHandler(Handler):
                 SELECT c.id,
                     extract(epoch from c.created_at) as created_at_epoch,
                     c.user_id,
-                    c.name
+                    c.name,
+                    c.collection_id,
+                    c.type
                 FROM {self._get_table_name("conversations")} c
                 {where_clause}
             ),
@@ -164,6 +172,8 @@ class PostgresConversationsHandler(Handler):
                 "created_at": row["created_at_epoch"],
                 "user_id": str(row["user_id"]) if row["user_id"] else None,
                 "name": row["name"] or None,
+                "collection_id": str(row["collection_id"]) if row["collection_id"] else None,
+                "type": row["type"],
             }
             for row in results
         ]

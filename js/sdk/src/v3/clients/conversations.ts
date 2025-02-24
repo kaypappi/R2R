@@ -5,6 +5,7 @@ import {
   WrappedConversationResponse,
   WrappedConversationsResponse,
   WrappedMessageResponse,
+  ConversationType,
 } from "../../types";
 import { downloadBlob } from "../../utils";
 
@@ -18,13 +19,19 @@ export class ConversationsClient {
   /**
    * Create a new conversation.
    * @param name The name of the conversation
+   * @param collectionId The ID of the collection this conversation belongs to
+   * @param type The type of conversation
    * @returns The created conversation
    */
   async create(options?: {
     name?: string;
+    collectionId?: string;
+    type?: ConversationType;
   }): Promise<WrappedConversationResponse> {
     const data: Record<string, any> = {
       ...(options?.name && { name: options?.name }),
+      ...(options?.collectionId && { collection_id: options?.collectionId }),
+      ...(options?.type && { type: options?.type }),
     };
 
     return this.client.makeRequest("POST", "conversations", {

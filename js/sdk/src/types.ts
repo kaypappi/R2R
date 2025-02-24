@@ -64,11 +64,24 @@ export interface CommunityResponse {
 }
 
 // Conversation types
+export enum ConversationType {
+  CHAT = "Chat",
+  FLASHCARDS = "Flashcards",
+  PRACTICE_QUIZ = "Practice Quiz",
+  STUDY_GUIDE = "Study Guide",
+  SOLVE = "Solve",
+  WRITE = "Write",
+  RECORD = "Record",
+  NOTES = "Notes",
+}
+
 export interface ConversationResponse {
   id: string;
   createdAt: string;
   userId?: string;
   name?: string;
+  collectionId?: string;
+  type?: ConversationType;
 }
 
 export interface Message {

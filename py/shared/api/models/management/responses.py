@@ -87,6 +87,8 @@ class ConversationResponse(BaseModel):
     created_at: datetime
     user_id: Optional[UUID] = None
     name: Optional[str] = None
+    collection_id: Optional[UUID] = None
+    type: str = "Chat"
 
 
 class VerificationResult(BaseModel):
