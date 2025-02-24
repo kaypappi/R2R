@@ -21,8 +21,15 @@ class ConversationsSDK:
     async def create(
         self,
         name: Optional[str] = None,
+        collection_id: Optional[UUID] = None,
+        type: str = "Chat",
     ) -> WrappedConversationResponse:
         """Create a new conversation.
+
+        Args:
+            name (Optional[str]): The name of the conversation
+            collection_id (Optional[UUID]): The ID of the collection this conversation belongs to
+            type (str): The type of conversation (defaults to "Chat")
 
         Returns:
             WrappedConversationResponse
@@ -30,6 +37,10 @@ class ConversationsSDK:
         data: dict[str, Any] = {}
         if name:
             data["name"] = name
+        if collection_id:
+            data["collection_id"] = str(collection_id)
+        if type:
+            data["type"] = type
 
         response_dict = await self.client._make_request(
             "POST",

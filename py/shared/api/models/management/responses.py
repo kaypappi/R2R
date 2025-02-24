@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Any, Optional
 from uuid import UUID
 
@@ -82,13 +83,24 @@ class CollectionResponse(BaseModel):
         arbitrary_types_allowed = True
 
 
+class ConversationType(str, Enum):
+    CHAT = "Chat"
+    FLASHCARDS = "Flashcards"
+    PRACTICE_QUIZ = "Practice Quiz"
+    STUDY_GUIDE = "Study Guide"
+    SOLVE = "Solve"
+    WRITE = "Write"
+    RECORD = "Record"
+    NOTES = "Notes"
+
+
 class ConversationResponse(BaseModel):
     id: UUID
     created_at: datetime
     user_id: Optional[UUID] = None
     name: Optional[str] = None
     collection_id: Optional[UUID] = None
-    type: str = "Chat"
+    type: ConversationType = ConversationType.CHAT
 
 
 class VerificationResult(BaseModel):

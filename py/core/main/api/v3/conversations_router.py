@@ -78,6 +78,12 @@ class ConversationsRouter(BaseRouterV3):
             name: Optional[str] = Body(
                 None, description="The name of the conversation", embed=True
             ),
+            collection_id: Optional[UUID] = Body(
+                None, description="The ID of the collection this conversation belongs to", embed=True
+            ),
+            type: str = Body(
+                "Chat", description="The type of conversation", embed=True
+            ),
             auth_user=Depends(self.providers.auth.auth_wrapper()),
         ) -> WrappedConversationResponse:
             """Create a new conversation.
@@ -90,6 +96,8 @@ class ConversationsRouter(BaseRouterV3):
             return await self.services.management.create_conversation(
                 user_id=user_id,
                 name=name,
+                collection_id=collection_id,
+                type=type,
             )
 
         @self.router.get(

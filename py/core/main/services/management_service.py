@@ -811,10 +811,14 @@ class ManagementService(Service):
         self,
         user_id: Optional[UUID] = None,
         name: Optional[str] = None,
+        collection_id: Optional[UUID] = None,
+        type: str = "Chat",
     ) -> ConversationResponse:
         return await self.providers.database.conversations_handler.create_conversation(
             user_id=user_id,
             name=name,
+            collection_id=collection_id,
+            type=type,
         )
 
     @telemetry_event("ConversationsOverview")
@@ -864,10 +868,17 @@ class ManagementService(Service):
 
     @telemetry_event("UpdateConversation")
     async def update_conversation(
-        self, conversation_id: UUID, name: str
+        self, 
+        conversation_id: UUID, 
+        name: Optional[str] = None,
+        collection_id: Optional[UUID] = None,
+        type: Optional[str] = None,
     ) -> ConversationResponse:
         return await self.providers.database.conversations_handler.update_conversation(
-            conversation_id=conversation_id, name=name
+            conversation_id=conversation_id,
+            name=name,
+            collection_id=collection_id,
+            type=type,
         )
 
     @telemetry_event("DeleteConversation")

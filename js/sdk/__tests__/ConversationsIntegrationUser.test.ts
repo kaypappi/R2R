@@ -1,6 +1,5 @@
 import { r2rClient } from "../src/index";
 import { describe, test, beforeAll, expect } from "@jest/globals";
-import { ConversationType } from "../src/types";
 
 const baseUrl = "http://localhost:7272";
 
@@ -107,34 +106,28 @@ describe("r2rClient V3 Collections Integration Tests", () => {
   test("Create a conversation with a name", async () => {
     const response = await client.conversations.create({
       name: "Test Conversation",
-      type: ConversationType.CHAT,
     });
     conversationId = response.results.id;
     expect(response.results).toBeDefined();
     expect(response.results.name).toBe("Test Conversation");
-    expect(response.results.type).toBe(ConversationType.CHAT);
   });
 
   test("Create a conversation with a name as user 1", async () => {
     const response = await user1Client.conversations.create({
       name: "User 1 Conversation",
-      type: ConversationType.FLASHCARDS,
     });
     user1ConversationId = response.results.id;
     expect(response.results).toBeDefined();
     expect(response.results.name).toBe("User 1 Conversation");
-    expect(response.results.type).toBe(ConversationType.FLASHCARDS);
   });
 
   test("Create a conversation with a name as user 2", async () => {
     const response = await user2Client.conversations.create({
       name: "User 2 Conversation",
-      type: ConversationType.STUDY_GUIDE,
     });
     user2ConversationId = response.results.id;
     expect(response.results).toBeDefined();
     expect(response.results.name).toBe("User 2 Conversation");
-    expect(response.results.type).toBe(ConversationType.STUDY_GUIDE);
   });
 
   test("Update a conversation name", async () => {

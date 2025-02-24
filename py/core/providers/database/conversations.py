@@ -49,10 +49,10 @@ class PostgresConversationsHandler(Handler):
         CREATE TABLE IF NOT EXISTS {self._get_table_name("conversations")} (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             user_id UUID,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            name TEXT,
             collection_id UUID,
-            type TEXT DEFAULT 'Chat'
+            type TEXT DEFAULT 'Chat',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            name TEXT
         );
         """
 
@@ -173,7 +173,7 @@ class PostgresConversationsHandler(Handler):
                 "user_id": str(row["user_id"]) if row["user_id"] else None,
                 "name": row["name"] or None,
                 "collection_id": str(row["collection_id"]) if row["collection_id"] else None,
-                "type": row["type"],
+                "type": row["type"] or "Chat",
             }
             for row in results
         ]
@@ -402,7 +402,11 @@ class PostgresConversationsHandler(Handler):
         ]
 
     async def update_conversation(
-        self, conversation_id: UUID, name: str
+        self, 
+        conversation_id: UUID, 
+        name: Optional[str] = None,
+        collection_id: Optional[UUID] = None,
+        type: Optional[str] = None,
     ) -> ConversationResponse:
         try:
             # Check if conversation exists
@@ -416,19 +420,50 @@ class PostgresConversationsHandler(Handler):
                     message=f"Conversation {conversation_id} not found.",
                 )
 
+            # Build update query dynamically based on provided fields
+            update_fields = []
+            params = []
+            param_index = 1
+
+            if name is not None:
+                update_fields.append(f"name = ${param_index}")
+                params.append(name)
+                param_index += 1
+
+            if collection_id is not None:
+                update_fields.append(f"collection_id = ${param_index}")
+                params.append(collection_id)
+                param_index += 1
+
+            if type is not None:
+                update_fields.append(f"type = ${param_index}")
+                params.append(type)
+                param_index += 1
+
+            if not update_fields:
+                raise R2RException(
+                    status_code=400,
+                    message="No fields provided for update",
+                )
+
+            params.append(conversation_id)
             update_query = f"""
             UPDATE {self._get_table_name("conversations")}
-            SET name = $1 WHERE id = $2
-            RETURNING user_id, extract(epoch from created_at) as created_at_epoch
+            SET {", ".join(update_fields)} 
+            WHERE id = ${param_index}
+            RETURNING id, user_id, collection_id, type, extract(epoch from created_at) as created_at_epoch
             """
+            
             updated_row = await self.connection_manager.fetchrow_query(
-                update_query, [name, conversation_id]
+                update_query, params
             )
             return ConversationResponse(
                 id=conversation_id,
                 created_at=updated_row["created_at_epoch"],
                 user_id=updated_row["user_id"] or None,
                 name=name,
+                collection_id=updated_row["collection_id"] or None,
+                type=updated_row["type"] or "Chat",
             )
         except Exception as e:
             raise HTTPException(

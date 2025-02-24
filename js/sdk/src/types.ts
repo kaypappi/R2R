@@ -63,7 +63,6 @@ export interface CommunityResponse {
   descriptionEmbedding?: string;
 }
 
-// Conversation types
 export enum ConversationType {
   CHAT = "Chat",
   FLASHCARDS = "Flashcards",
@@ -75,6 +74,7 @@ export enum ConversationType {
   NOTES = "Notes",
 }
 
+// Conversation types
 export interface ConversationResponse {
   id: string;
   createdAt: string;

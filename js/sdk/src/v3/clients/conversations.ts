@@ -19,8 +19,8 @@ export class ConversationsClient {
   /**
    * Create a new conversation.
    * @param name The name of the conversation
-   * @param collectionId The ID of the collection this conversation belongs to
-   * @param type The type of conversation
+   * @param collectionId The ID of the collection associated with the conversation
+   * @param type The type of the conversation
    * @returns The created conversation
    */
   async create(options?: {
