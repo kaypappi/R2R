@@ -186,8 +186,10 @@ class ManagementService(Service):
             document = documents_overview_response["results"][0]
 
             for collection_id in document.collection_ids:
-                await self.providers.database.collections_handler.decrement_collection_document_count(
-                    collection_id=collection_id
+                await self.providers.database.collections_handler.update_document_count_recursively(
+                    collection_id=collection_id,
+                    increment=False,
+                    change_amount=1
                 )
 
             if owner_id and str(document.owner_id) != owner_id:
