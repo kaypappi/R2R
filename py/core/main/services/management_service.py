@@ -1121,3 +1121,23 @@ class ManagementService(Service):
             "usage": usage,
         }
         return result
+
+    @telemetry_event("UpdateDocument")
+    async def update_document(self, document: DocumentResponse) -> None:
+        """Update a document's metadata and title.
+        
+        Args:
+            document (DocumentResponse): The document with updated fields
+            
+        Raises:
+            R2RException: If the document doesn't exist or there's a database error
+        """
+        try:
+            # Update document in database
+            await self.providers.database.documents_handler.upsert_documents_overview(document)
+        except Exception as e:
+            logger.error(f"Failed to update document {document.id}: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"An error occurred while updating the document: {e}",
+            ) from e

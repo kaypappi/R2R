@@ -145,3 +145,48 @@ async def test_delete_document(documents_handler):
     res = await documents_handler.get_documents_overview(
         offset=0, limit=10, filter_document_ids=[doc_id])
     assert res["total_entries"] == 0
+
+
+@pytest.mark.asyncio
+async def test_update_document_title_and_metadata(documents_handler):
+    # Create initial document
+    doc_id = uuid.uuid4()
+    owner_id = uuid.uuid4()
+    initial_doc = DocumentResponse(
+        id=doc_id,
+        collection_ids=[],
+        owner_id=owner_id,
+        document_type=DocumentType.TXT,
+        metadata={"note": "initial", "version": "v0"},
+        title="Initial Title",
+        version="v0",
+        size_in_bytes=100,
+        ingestion_status=IngestionStatus.SUCCESS,
+        extraction_status=GraphExtractionStatus.PENDING,
+        created_at=None,
+        updated_at=None,
+        summary=None,
+        summary_embedding=None,
+    )
+
+    await documents_handler.upsert_documents_overview([initial_doc])
+
+    # Update document title and metadata
+    updated_metadata = {"note": "updated", "version": "v0", "new_field": "test"}
+    updated_title = "Updated Title"
+    
+    updated_doc = initial_doc.copy()
+    updated_doc.title = updated_title
+    updated_doc.metadata = updated_metadata
+
+    await documents_handler.upsert_documents_overview([updated_doc])
+
+    # Verify update
+    res = await documents_handler.get_documents_overview(
+        offset=0, limit=10, filter_document_ids=[doc_id])
+    fetched_doc = res["results"][0]
+    
+    assert fetched_doc.title == updated_title
+    assert fetched_doc.metadata == updated_metadata
+    assert fetched_doc.version == "v0"  # Version should remain unchanged
+    assert fetched_doc.ingestion_status == IngestionStatus.SUCCESS  # Status should remain unchanged

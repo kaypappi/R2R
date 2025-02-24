@@ -732,4 +732,24 @@ export class DocumentsClient {
       await fs.promises.unlink(tmpFilePath);
     }
   }
+
+  /**
+   * Update a document's title and metadata
+   * 
+   * @param options - The update options
+   * @param options.id - The ID of the document to update
+   * @param options.title - Optional new title for the document
+   * @param options.metadata - Optional new metadata for the document
+   * @returns The updated document
+   */
+  async update(options: {
+    id: string;
+    title?: string;
+    metadata?: Record<string, any>;
+  }): Promise<WrappedDocumentResponse> {
+    const { id, ...data } = options;
+    return this.client.makeRequest("PATCH", `documents/${id}`, {
+      data,
+    });
+  }
 }

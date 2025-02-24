@@ -2155,6 +2155,105 @@ class DocumentsRouter(BaseRouterV3):
             )
             return results  # type: ignore
 
+        @self.router.patch(
+            "/documents/{id}",
+            dependencies=[Depends(self.rate_limit_dependency)],
+            summary="Update document title and metadata",
+            openapi_extra={
+                "x-codeSamples": [
+                    {
+                        "lang": "Python",
+                        "source": textwrap.dedent("""
+                            from r2r import R2RClient
+
+                            client = R2RClient()
+                            # when using auth, do client.login(...)
+
+                            response = client.documents.update(
+                                id="b4ac4dd6-5f27-596e-a55b-7cf242ca30aa",
+                                title="New Title",
+                                metadata={"key": "value"}
+                            )
+                            """),
+                    },
+                    {
+                        "lang": "JavaScript",
+                        "source": textwrap.dedent("""
+                            const { r2rClient } = require("r2r-js");
+
+                            const client = new r2rClient();
+
+                            function main() {
+                                const response = await client.documents.update({
+                                    id: "b4ac4dd6-5f27-596e-a55b-7cf242ca30aa",
+                                    title: "New Title",
+                                    metadata: { key: "value" }
+                                });
+                            }
+
+                            main();
+                            """),
+                    },
+                    {
+                        "lang": "cURL",
+                        "source": textwrap.dedent("""
+                            curl -X PATCH "https://api.example.com/v3/documents/b4ac4dd6-5f27-596e-a55b-7cf242ca30aa" \\
+                            -H "Authorization: Bearer YOUR_API_KEY" \\
+                            -H "Content-Type: application/json" \\
+                            -d '{"title": "New Title", "metadata": {"key": "value"}}'
+                            """),
+                    },
+                ]
+            },
+        )
+        @self.base_endpoint
+        async def update_document(
+            id: UUID = Path(..., description="Document ID"),
+            title: Optional[str] = Body(None, description="New document title"),
+            metadata: Optional[dict] = Body(None, description="New document metadata"),
+            auth_user=Depends(self.providers.auth.auth_wrapper()),
+        ) -> WrappedDocumentResponse:
+            """Update a document's title and metadata.
+            
+            This endpoint allows updating the title and/or metadata of an existing document.
+            The document must exist and the user must have appropriate permissions.
+            Other document properties like version and ingestion status remain unchanged.
+            """
+            # Verify document exists and user has access
+            documents_overview_response = await self.services.management.documents_overview(
+                user_ids=None if auth_user.is_superuser else [auth_user.id],
+                collection_ids=None if auth_user.is_superuser else auth_user.collection_ids,
+                document_ids=[id],
+                offset=0,
+                limit=1,
+            )
+
+            if not documents_overview_response["results"]:
+                raise R2RException("Document not found.", 404)
+
+            document = documents_overview_response["results"][0]
+
+            # Check ownership if not superuser
+            if not auth_user.is_superuser and document.owner_id != auth_user.id:
+                raise R2RException(
+                    "Not authorized to update this document.", 403
+                )
+
+            # Update document
+            if title is not None:
+                document.title = title
+            if metadata is not None:
+                # Preserve version in metadata
+                version = document.metadata.get("version")
+                document.metadata = metadata
+                if version:
+                    document.metadata["version"] = version
+
+            # Update the document
+            await self.services.management.update_document(document)
+
+            return document
+
     @staticmethod
     async def _process_file(file):
         import base64
