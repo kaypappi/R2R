@@ -8,6 +8,17 @@ from sqlalchemy import engine_from_config, pool, text
 # access to the values within the .ini file in use.
 config = context.config
 
+# Set the database URL from environment variables
+postgres_user = os.environ.get("R2R_POSTGRES_USER")
+postgres_password = os.environ.get("R2R_POSTGRES_PASSWORD")
+postgres_host = os.environ.get("R2R_POSTGRES_HOST")
+postgres_port = os.environ.get("R2R_POSTGRES_PORT")
+postgres_dbname = os.environ.get("R2R_POSTGRES_DBNAME")
+
+if postgres_user and postgres_password and postgres_host and postgres_port and postgres_dbname:
+    db_url = f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_dbname}"
+    config.set_main_option("sqlalchemy.url", db_url)
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:

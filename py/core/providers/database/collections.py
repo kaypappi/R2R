@@ -69,56 +69,6 @@ class PostgresCollectionsHandler(Handler):
         """
         await self.connection_manager.execute_query(query)
 
-        # 2. Check for duplicate rows that would violate the uniqueness constraint.
-        check_duplicates_query = f"""
-        SELECT owner_id, name, COUNT(*) AS cnt
-        FROM {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-        GROUP BY owner_id, name
-        HAVING COUNT(*) > 1
-        """
-        duplicates = await self.connection_manager.fetch_query(
-            check_duplicates_query
-        )
-        if duplicates:
-            logger.warning(
-                "Cannot add unique constraint (owner_id, name) because duplicates exist. "
-                "Please resolve duplicates first. Found duplicates: %s",
-                duplicates,
-            )
-            return  # or raise an exception, depending on your use case
-
-        # 3. Parse the qualified table name into schema and table.
-        qualified_table = self._get_table_name(
-            PostgresCollectionsHandler.TABLE_NAME
-        )
-        if "." in qualified_table:
-            schema, table = qualified_table.split(".", 1)
-        else:
-            schema = "public"
-            table = qualified_table
-
-        # 4. Add the unique constraint if it does not already exist.
-        alter_table_constraint = f"""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM pg_constraint c
-                JOIN pg_class t ON c.conrelid = t.oid
-                JOIN pg_namespace n ON n.oid = t.relnamespace
-                WHERE t.relname = '{table}'
-                AND n.nspname = '{schema}'
-                AND c.conname = 'unique_owner_collection_name'
-            ) THEN
-                ALTER TABLE {qualified_table}
-                ADD CONSTRAINT unique_owner_collection_name
-                UNIQUE (owner_id, name);
-            END IF;
-        END;
-        $$;
-        """
-        await self.connection_manager.execute_query(alter_table_constraint)
-
     async def collection_exists(self, collection_id: UUID) -> bool:
         """Check if a collection exists."""
         query = f"""
@@ -148,13 +98,36 @@ class PostgresCollectionsHandler(Handler):
 
         if not name and not collection_id:
             name = self.config.default_collection_name
-            collection_id = generate_default_user_collection_id(owner_id)
+            collection_id = uuid4()
             logger.info("Using default collection name=%s and generated collection_id=%s", name, collection_id)
 
         # Set default theme and icon if not provided
         theme = theme or os.getenv("R2R_DEFAULT_COLLECTION_THEME", "#a855f7")
         icon = icon or os.getenv("R2R_DEFAULT_COLLECTION_ICON", "Book")
         logger.info("Using theme=%s and icon=%s", theme, icon)
+
+        # Check if collection with this ID already exists
+        collection_id = collection_id or uuid4()
+        
+        # Retry up to 3 times with new UUIDs if there's a conflict
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            if await self.collection_exists(collection_id):
+                logger.warning("Collection with ID %s already exists, generating a new ID", collection_id)
+                collection_id = uuid4()
+                logger.info("Generated new collection ID: %s", collection_id)
+                retry_count += 1
+            else:
+                break
+        
+        if retry_count >= max_retries:
+            logger.error("Failed to generate a unique collection ID after %s attempts", max_retries)
+            raise R2RException(
+                message="Failed to generate a unique collection ID",
+                status_code=500,
+            )
 
         query = f"""
             INSERT INTO {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
@@ -163,149 +136,234 @@ class PostgresCollectionsHandler(Handler):
             RETURNING id, owner_id, name, description, theme, icon, parent_id, subcollections,
                       graph_sync_status, graph_cluster_status, created_at, updated_at
         """
-        collection_id = collection_id or uuid4()
-        params = [
-            str(collection_id),
-            str(owner_id),
-            name,
-            description,
-            theme,
-            icon,
-            str(parent_id) if parent_id else None,
-            [],  # Initialize empty subcollections array
-        ]
-
-        try:
-            result = await self.connection_manager.fetchrow_query(
-                query=query,
-                params=params,
-            )
-            if not result:
-                logger.error("Failed to create collection - no result returned")
-                raise R2RException(
-                    status_code=404, message="Collection not found"
-                )
-
-            # Get the complete collection details using get_collection_by_id
-            collection = await self.get_collection_by_id(collection_id)
-            if not collection:
-                logger.error("Failed to retrieve created collection details")
-                raise R2RException(
-                    status_code=404, message="Collection not found"
-                )
-            
-            logger.info(
-                "Created collection: id=%s, name=%s, owner_id=%s",
-                collection.id,
-                collection.name,
-                collection.owner_id,
-            )
-
-            # Create default subcollections if this is a root collection (no parent_id) and has a name
-            if not parent_id and name:
-                logger.info("Creating default subcollections for root collection id=%s", collection.id)
+        
+        # Maximum number of retries for unique violation errors
+        max_insert_retries = 5
+        insert_retry_count = 0
+        original_name = name
+        
+        while insert_retry_count < max_insert_retries:
+            try:
+                params = [
+                    str(collection_id),
+                    str(owner_id),
+                    name,
+                    description,
+                    theme,
+                    icon,
+                    str(parent_id) if parent_id else None,
+                    [],  # Initialize empty subcollections array
+                ]
                 
-                # Create main subcollection
-                main_subcoll_name = os.getenv("R2R_MAIN_SUBCOLLECTION_NAME", "Class 1")
-                main_subcoll_desc = os.getenv("R2R_MAIN_SUBCOLLECTION_DESC", "Your first class for this course")
-                main_subcoll_theme = os.getenv("R2R_MAIN_SUBCOLLECTION_THEME", "#a855f7")
-                main_subcoll_icon = os.getenv("R2R_MAIN_SUBCOLLECTION_ICON", "Book")
-                
-                logger.info("Creating main subcollection with name=%s under parent_id=%s", main_subcoll_name, collection.id)
-                main_subcoll = await self.create_collection(
-                    owner_id=owner_id,
-                    name=main_subcoll_name,
-                    description=main_subcoll_desc,
-                    theme=main_subcoll_theme,
-                    icon=main_subcoll_icon,
-                    parent_id=collection.id
+                result = await self.connection_manager.fetchrow_query(
+                    query=query,
+                    params=params,
                 )
                 
-                # Add main subcollection to parent's subcollections array
-                update_query = f"""
-                    UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
-                    SET subcollections = array_append(subcollections, $1::uuid)
-                    WHERE id = $2::uuid
-                    RETURNING id
-                """
-                await self.connection_manager.execute_query(
-                    update_query,
-                    [str(main_subcoll.id), str(collection.id)]
-                )
+                if not result:
+                    logger.error("Failed to create collection - no result returned")
+                    raise R2RException(
+                        status_code=404, message="Collection not found"
+                    )
+
+                # Get the complete collection details using get_collection_by_id
+                collection = await self.get_collection_by_id(collection_id)
+                if not collection:
+                    logger.error("Failed to retrieve created collection details")
+                    raise R2RException(
+                        status_code=404, message="Collection not found"
+                    )
                 
                 logger.info(
-                    "Created main subcollection: id=%s, name=%s",
-                    main_subcoll.id,
-                    main_subcoll.name
+                    "Created collection: id=%s, name=%s, owner_id=%s",
+                    collection.id,
+                    collection.name,
+                    collection.owner_id,
                 )
 
-                # Create standard subcollections under the main subcollection
-                subcollections_config = [
-                    {
-                        "name": os.getenv("R2R_TEXTBOOKS_NAME", "Textbooks"),
-                        "desc": os.getenv("R2R_TEXTBOOKS_DESC", "General documents collection"),
-                        "theme": os.getenv("R2R_TEXTBOOKS_THEME", "#a855f7"),
-                        "icon": os.getenv("R2R_TEXTBOOKS_ICON", "BookOpen")
-                    },
-                    {
-                        "name": os.getenv("R2R_ASSIGNMENTS_NAME", "Assignments"),
-                        "desc": os.getenv("R2R_ASSIGNMENTS_DESC", "Assignment instructions and solutions"),
-                        "theme": os.getenv("R2R_ASSIGNMENTS_THEME", "#a855f7"),
-                        "icon": os.getenv("R2R_ASSIGNMENTS_ICON", "ClipboardList")
-                    },
-                    {
-                        "name": os.getenv("R2R_NOTES_NAME", "Notes"),
-                        "desc": os.getenv("R2R_NOTES_DESC", "Class notes eg. written notes"),
-                        "theme": os.getenv("R2R_NOTES_THEME", "#a855f7"),
-                        "icon": os.getenv("R2R_NOTES_ICON", "Pencil")
-                    }
-                ]
-
-                for config in subcollections_config:
-                    logger.info("Creating standard subcollection with name=%s under parent_id=%s", config["name"], main_subcoll.id)
-                    subcoll = await self.create_collection(
-                        owner_id=owner_id,
-                        name=config["name"],
-                        description=config["desc"],
-                        theme=config["theme"],
-                        icon=config["icon"],
-                        parent_id=main_subcoll.id
-                    )
+                # Create default subcollections if this is a root collection (no parent_id) and has a name
+                # Only create subcollections if a name was explicitly provided (not None or empty string)
+                # AND the name is not equal to the default_collection_name
+                if not parent_id and name and name.strip() and name != self.config.default_collection_name:
+                    logger.info("Creating default subcollections for root collection id=%s", collection.id)
                     
-                    # Add subcollection to main subcollection's subcollections array
+                    # Create main subcollection
+                    main_subcoll_name = os.getenv("R2R_MAIN_SUBCOLLECTION_NAME", "Class 1")
+                    main_subcoll_desc = os.getenv("R2R_MAIN_SUBCOLLECTION_DESC", "Your first class for this course")
+                    main_subcoll_theme = os.getenv("R2R_MAIN_SUBCOLLECTION_THEME", "#a855f7")
+                    main_subcoll_icon = os.getenv("R2R_MAIN_SUBCOLLECTION_ICON", "Book")
+                    
+                    # Generate a new UUID for the main subcollection
+                    main_subcoll_id = uuid4()
+                    logger.info("Creating main subcollection with name=%s under parent_id=%s with ID=%s", 
+                               main_subcoll_name, collection.id, main_subcoll_id)
+                    
+                    # Try to create the main subcollection with retries for name uniqueness
+                    main_subcoll = None
+                    name_retry_count = 0
+                    max_name_retries = 5
+                    current_main_name = main_subcoll_name
+                    
+                    while name_retry_count < max_name_retries and not main_subcoll:
+                        try:
+                            main_subcoll = await self.create_collection(
+                                owner_id=owner_id,
+                                name=current_main_name,
+                                description=main_subcoll_desc,
+                                collection_id=main_subcoll_id,
+                                theme=main_subcoll_theme,
+                                icon=main_subcoll_icon,
+                                parent_id=collection.id,
+                            )
+                            break
+                        except HTTPException as e:
+                            if "unique constraint" in str(e).lower() or "already exists" in str(e).lower():
+                                # If name conflict, append a suffix and retry
+                                name_retry_count += 1
+                                current_main_name = f"{main_subcoll_name} ({name_retry_count})"
+                                main_subcoll_id = uuid4()  # Generate a new ID for the retry
+                                logger.info("Name conflict for main subcollection, retrying with name=%s and ID=%s", 
+                                           current_main_name, main_subcoll_id)
+                            else:
+                                # If it's a different error, re-raise it
+                                raise
+                    
+                    if not main_subcoll:
+                        logger.error("Failed to create main subcollection after %s name retries", max_name_retries)
+                        raise R2RException(
+                            message="Failed to create main subcollection after multiple retries",
+                            status_code=500,
+                        )
+                    
+                    # Add main subcollection to parent's subcollections array
+                    update_query = f"""
+                        UPDATE {self._get_table_name(PostgresCollectionsHandler.TABLE_NAME)}
+                        SET subcollections = array_append(subcollections, $1::uuid)
+                        WHERE id = $2::uuid
+                        RETURNING id
+                    """
                     await self.connection_manager.execute_query(
                         update_query,
-                        [str(subcoll.id), str(main_subcoll.id)]
+                        [str(main_subcoll.id), str(collection.id)]
                     )
                     
                     logger.info(
-                        "Created standard subcollection: id=%s, name=%s",
-                        subcoll.id,
-                        subcoll.name
+                        "Created main subcollection: id=%s, name=%s",
+                        main_subcoll.id,
+                        main_subcoll.name
                     )
 
-            # Get the final collection details with all subcollections
-            final_collection = await self.get_collection_by_id(collection_id)
-            if not final_collection:
-                logger.error("Failed to retrieve final collection details")
-                raise R2RException(
-                    status_code=404, message="Collection not found"
-                )
+                    # Create standard subcollections under the main subcollection
+                    subcollections_config = [
+                        {
+                            "name": os.getenv("R2R_TEXTBOOKS_NAME", "Textbooks"),
+                            "desc": os.getenv("R2R_TEXTBOOKS_DESC", "General documents collection"),
+                            "theme": os.getenv("R2R_TEXTBOOKS_THEME", "#a855f7"),
+                            "icon": os.getenv("R2R_TEXTBOOKS_ICON", "BookOpen")
+                        },
+                        {
+                            "name": os.getenv("R2R_ASSIGNMENTS_NAME", "Assignments"),
+                            "desc": os.getenv("R2R_ASSIGNMENTS_DESC", "Assignment instructions and solutions"),
+                            "theme": os.getenv("R2R_ASSIGNMENTS_THEME", "#a855f7"),
+                            "icon": os.getenv("R2R_ASSIGNMENTS_ICON", "ClipboardList")
+                        },
+                        {
+                            "name": os.getenv("R2R_NOTES_NAME", "Notes"),
+                            "desc": os.getenv("R2R_NOTES_DESC", "Class notes eg. written notes"),
+                            "theme": os.getenv("R2R_NOTES_THEME", "#a855f7"),
+                            "icon": os.getenv("R2R_NOTES_ICON", "Pencil")
+                        }
+                    ]
 
-            return final_collection
+                    for config in subcollections_config:
+                        # Generate a unique ID for each standard subcollection
+                        subcoll_id = uuid4()
+                        subcoll_name = config["name"]
+                        logger.info("Creating standard subcollection with name=%s under parent_id=%s with ID=%s", 
+                                   subcoll_name, main_subcoll.id, subcoll_id)
+                        
+                        # Try to create the standard subcollection with retries for name uniqueness
+                        subcoll = None
+                        name_retry_count = 0
+                        current_subcoll_name = subcoll_name
+                        
+                        while name_retry_count < max_name_retries and not subcoll:
+                            try:
+                                subcoll = await self.create_collection(
+                                    owner_id=owner_id,
+                                    name=current_subcoll_name,
+                                    description=config["desc"],
+                                    collection_id=subcoll_id,
+                                    theme=config["theme"],
+                                    icon=config["icon"],
+                                    parent_id=main_subcoll.id,
+                                )
+                                break
+                            except HTTPException as e:
+                                if "unique constraint" in str(e).lower() or "already exists" in str(e).lower():
+                                    # If name conflict, append a suffix and retry
+                                    name_retry_count += 1
+                                    current_subcoll_name = f"{subcoll_name} ({name_retry_count})"
+                                    subcoll_id = uuid4()  # Generate a new ID for the retry
+                                    logger.info("Name conflict for standard subcollection, retrying with name=%s and ID=%s", 
+                                               current_subcoll_name, subcoll_id)
+                                else:
+                                    # If it's a different error, re-raise it
+                                    raise
+                        
+                        if not subcoll:
+                            logger.error("Failed to create standard subcollection after %s name retries", max_name_retries)
+                            continue  # Skip this subcollection and try the next one
+                        
+                        # Add subcollection to main subcollection's subcollections array
+                        await self.connection_manager.execute_query(
+                            update_query,
+                            [str(subcoll.id), str(main_subcoll.id)]
+                        )
+                        
+                        logger.info(
+                            "Created standard subcollection: id=%s, name=%s",
+                            subcoll.id,
+                            subcoll.name
+                        )
+                else:
+                    logger.info("Skipping subcollection creation: parent_id=%s, name=%s", parent_id, name)
 
-        except UniqueViolationError:
-            logger.error("Failed to create collection - unique violation error for collection_id=%s", collection_id)
-            raise R2RException(
-                message="Collection with this ID already exists",
-                status_code=409,
-            ) from None
-        except Exception as e:
-            logger.error("Failed to create collection: %s", str(e))
-            raise HTTPException(
-                status_code=500,
-                detail=f"An error occurred while creating the collection: {e}",
-            ) from e
+                # Get the final collection details with all subcollections
+                final_collection = await self.get_collection_by_id(collection_id)
+                if not final_collection:
+                    logger.error("Failed to retrieve final collection details")
+                    raise R2RException(
+                        status_code=404, message="Collection not found"
+                    )
+
+                return final_collection
+                
+            except UniqueViolationError as e:
+                if "unique_owner_collection_name" in str(e):
+                    # This is a name conflict, not an ID conflict
+                    insert_retry_count += 1
+                    name = f"{original_name} ({insert_retry_count})"
+                    logger.warning("Name conflict for collection, retrying with name=%s", name)
+                else:
+                    # This is an ID conflict
+                    logger.warning("Unique violation error for collection_id=%s, retrying with a new ID", collection_id)
+                    collection_id = uuid4()
+                    logger.info("Generated new collection ID for retry: %s", collection_id)
+                    insert_retry_count += 1
+                
+                if insert_retry_count >= max_insert_retries:
+                    logger.error("Failed to create collection after %s retries - unique violation errors", max_insert_retries)
+                    raise R2RException(
+                        message="Failed to create collection after multiple retries",
+                        status_code=500,
+                    )
+            except Exception as e:
+                logger.error("Failed to create collection: %s", str(e))
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"An error occurred while creating the collection: {e}",
+                ) from e
 
     async def update_collection(
         self,

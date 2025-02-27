@@ -57,8 +57,8 @@ host = "aws-0-us-west-1.pooler.supabase.com"
 port = 5432
 db_name = "postgres"
 project_name = "r2r_default"
-default_collection_name = "Default"
-default_collection_description = "Your default collection."
+default_collection_name = "Vault"
+default_collection_description = "Your private vault"
 collection_summary_prompt = "collection_summary"
 
   [database.graph_creation_settings]

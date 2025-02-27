@@ -18,17 +18,19 @@ class SemaphoreConnectionPool:
 
     async def initialize(self):
         try:
+            # Reduce the number of connections to 30% of max_connections instead of 90%
+            connection_percentage = 0.3
+            max_connections = int(self.postgres_configuration_settings.max_connections * connection_percentage)
+            
             logger.info(
-                f"Connecting with {int(self.postgres_configuration_settings.max_connections * 0.9)} connections to `asyncpg.create_pool`."
+                f"Connecting with {max_connections} connections to `asyncpg.create_pool`."
             )
 
-            self.semaphore = asyncio.Semaphore(
-                int(self.postgres_configuration_settings.max_connections * 0.9)
-            )
+            self.semaphore = asyncio.Semaphore(max_connections)
 
             self.pool = await asyncpg.create_pool(
                 self.connection_string,
-                max_size=self.postgres_configuration_settings.max_connections,
+                max_size=max_connections,
                 statement_cache_size=self.postgres_configuration_settings.statement_cache_size,
             )
 
